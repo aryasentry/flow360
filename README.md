@@ -2,7 +2,7 @@
 
 Flow360 is an agentic next best action platform for B2B workforce and staffing operations. It turns customer interactions, CRM history, enterprise playbooks, candidate data, and persistent memory into ranked, explainable recommendations that a human can approve or reject.
 
-The project was built for the "Intelligent Next Best Action Platform" hackathon prompt. The goal is not to build another chatbot or basic RAG demo. Flow360 is designed as reusable decision intelligence infrastructure with planner-led agents, enterprise retrieval, persistent memory, explainable recommendations, and human-in-the-loop review.
+The goal is not to build another chatbot or basic RAG demo. Flow360 is designed as reusable decision intelligence infrastructure with planner-led agents, enterprise retrieval, persistent memory, explainable recommendations, and human-in-the-loop review.
 
 ## What This Project Solves
 
