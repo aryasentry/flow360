@@ -189,9 +189,12 @@ class Flow360Workflow:
             if priority not in {"critical", "high", "medium", "low"}:
                 priority = "medium"
             try:
-                confidence = int(float(item.get("confidence", 75)))
+                confidence_value = float(item.get("confidence", 75))
             except (TypeError, ValueError):
-                confidence = 75
+                confidence_value = 75
+            if 0 < confidence_value <= 1:
+                confidence_value *= 100
+            confidence = round(confidence_value)
             confidence = max(0, min(100, confidence))
             recommendations.append(
                 Recommendation(

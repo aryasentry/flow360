@@ -1,0 +1,1429 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flow360 Innovation Lab</title>
+    <style>
+      :root {
+        --bg: #050607;
+        --ink: #f8fafc;
+        --muted: rgba(248, 250, 252, 0.62);
+        --line: rgba(255, 255, 255, 0.12);
+        --panel: rgba(255, 255, 255, 0.07);
+        --panel-2: rgba(255, 255, 255, 0.11);
+        --cyan: #67e8f9;
+        --indigo: #8b5cf6;
+        --amber: #fbbf24;
+        --rose: #fb7185;
+        --emerald: #34d399;
+        --paper: #f7f6f2;
+        --paper-line: rgba(15, 23, 42, 0.12);
+        --paper-muted: rgba(15, 23, 42, 0.58);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at 23% 0%, rgba(245, 158, 11, 0.26), transparent 30%),
+          radial-gradient(circle at 75% 4%, rgba(14, 165, 233, 0.24), transparent 32%),
+          radial-gradient(circle at 50% 43%, rgba(139, 92, 246, 0.12), transparent 25%),
+          linear-gradient(180deg, #020304 0%, #071018 48%, #050607 100%);
+        color: var(--ink);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+        background-size: 54px 54px;
+        mask-image: linear-gradient(to bottom, black, transparent 86%);
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      .shell {
+        width: min(1440px, calc(100vw - 36px));
+        margin: 22px auto 56px;
+        border: 1px solid var(--line);
+        border-radius: 30px;
+        background: rgba(0, 0, 0, 0.44);
+        box-shadow:
+          0 0 0 10px rgba(255, 255, 255, 0.025),
+          0 35px 120px rgba(0, 0, 0, 0.5),
+          inset 0 1px 0 rgba(255, 255, 255, 0.12);
+        overflow: hidden;
+        backdrop-filter: blur(18px);
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 22px 34px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 750;
+        letter-spacing: 0;
+      }
+
+      .brand-mark {
+        display: grid;
+        place-items: center;
+        width: 40px;
+        height: 40px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: rgba(255, 255, 255, 0.09);
+        box-shadow: inset 0 1px 16px rgba(255, 255, 255, 0.06);
+      }
+
+      .nav-pills {
+        display: flex;
+        gap: 6px;
+        padding: 5px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.38);
+      }
+
+      .nav-pills a {
+        padding: 11px 18px;
+        border-radius: 999px;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 14px;
+      }
+
+      .nav-pills a:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: white;
+      }
+
+      .header-action {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        height: 42px;
+        padding: 0 16px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 8px;
+        background: black;
+        color: white;
+        font-weight: 700;
+        box-shadow: 0 0 22px rgba(59, 130, 246, 0.48);
+      }
+
+      .hero {
+        position: relative;
+        padding: 72px 34px 42px;
+        text-align: center;
+        overflow: hidden;
+      }
+
+      .watermark {
+        position: absolute;
+        top: 4px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: clamp(72px, 13vw, 190px);
+        line-height: 1;
+        font-weight: 800;
+        color: rgba(255, 255, 255, 0.04);
+        white-space: nowrap;
+        pointer-events: none;
+      }
+
+      .horizon {
+        position: absolute;
+        left: 50%;
+        bottom: -190px;
+        transform: translateX(-50%);
+        width: min(980px, 80vw);
+        height: 410px;
+        border-radius: 999px 999px 0 0;
+        background:
+          radial-gradient(circle at 35% 0%, rgba(251, 191, 36, 0.6), transparent 28%),
+          radial-gradient(circle at 68% 8%, rgba(14, 165, 233, 0.7), transparent 32%),
+          linear-gradient(90deg, rgba(245, 158, 11, 0.32), rgba(59, 130, 246, 0.4));
+        filter: blur(4px);
+        opacity: 0.72;
+      }
+
+      .eyebrow {
+        position: relative;
+        z-index: 2;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.1);
+        color: rgba(255, 255, 255, 0.76);
+        font-size: 14px;
+      }
+
+      h1 {
+        position: relative;
+        z-index: 2;
+        margin: 24px auto 0;
+        max-width: 980px;
+        font-size: clamp(48px, 7vw, 92px);
+        line-height: 1.03;
+        letter-spacing: 0;
+      }
+
+      .hero p {
+        position: relative;
+        z-index: 2;
+        margin: 22px auto 0;
+        max-width: 760px;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.7;
+      }
+
+      .hero-grid {
+        position: relative;
+        z-index: 2;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        max-width: 900px;
+        margin: 38px auto 0;
+      }
+
+      .hero-card {
+        min-height: 100px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.36);
+        padding: 18px;
+        text-align: left;
+        backdrop-filter: blur(16px);
+      }
+
+      .hero-card strong {
+        display: block;
+        margin-top: 10px;
+        font-size: 15px;
+      }
+
+      .hero-card span {
+        color: rgba(255, 255, 255, 0.55);
+        font-size: 13px;
+      }
+
+      .section {
+        position: relative;
+        padding: 34px;
+      }
+
+      .section + .section {
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .section-title {
+        display: grid;
+        grid-template-columns: 0.8fr 1.2fr;
+        gap: 24px;
+        align-items: end;
+        margin-bottom: 22px;
+      }
+
+      .section-title p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      .tag {
+        display: inline-flex;
+        width: fit-content;
+        align-items: center;
+        gap: 8px;
+        color: var(--cyan);
+        font-size: 13px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      h2 {
+        margin: 10px 0 0;
+        font-size: clamp(30px, 4vw, 52px);
+        line-height: 1.08;
+        letter-spacing: 0;
+      }
+
+      .app-window {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+        min-height: 620px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.04);
+        box-shadow: 0 22px 80px rgba(0, 0, 0, 0.28);
+      }
+
+      .sidebar {
+        border-right: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.06);
+        padding: 18px;
+      }
+
+      .sidebar .brand {
+        margin-bottom: 28px;
+      }
+
+      .side-link {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 11px 12px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        color: rgba(255, 255, 255, 0.66);
+        font-size: 14px;
+        background: transparent;
+        text-align: left;
+      }
+
+      .side-link.active {
+        border-color: rgba(103, 232, 249, 0.24);
+        background: rgba(103, 232, 249, 0.11);
+        color: white;
+      }
+
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: var(--cyan);
+      }
+
+      .workspace {
+        background: var(--paper);
+        color: #06070a;
+      }
+
+      .workspace-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 24px 26px;
+        border-bottom: 1px solid var(--paper-line);
+      }
+
+      .workspace-head h3 {
+        margin: 0;
+        font-size: 28px;
+        letter-spacing: 0;
+      }
+
+      .workspace-head p {
+        margin: 7px 0 0;
+        color: var(--paper-muted);
+      }
+
+      .black-button,
+      .ghost-button,
+      .small-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        border-radius: 7px;
+        cursor: pointer;
+        font-weight: 750;
+      }
+
+      .black-button {
+        min-height: 42px;
+        border: 1px solid black;
+        background: black;
+        color: white;
+        padding: 0 15px;
+      }
+
+      .ghost-button {
+        min-height: 42px;
+        border: 1px solid var(--paper-line);
+        background: white;
+        color: black;
+        padding: 0 15px;
+      }
+
+      .small-button {
+        min-height: 32px;
+        border: 1px solid var(--paper-line);
+        background: white;
+        color: black;
+        padding: 0 10px;
+        font-size: 13px;
+      }
+
+      .ledger-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+        gap: 14px;
+        padding: 16px;
+      }
+
+      .paper-card {
+        border: 1px solid var(--paper-line);
+        border-radius: 12px;
+        background: white;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+      }
+
+      .paper-card.dark {
+        background:
+          radial-gradient(circle at 25% 20%, rgba(99, 102, 241, 0.24), transparent 33%),
+          radial-gradient(circle at 78% 52%, rgba(16, 185, 129, 0.22), transparent 34%),
+          #101114;
+        color: white;
+      }
+
+      .card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 16px;
+        border-bottom: 1px solid var(--paper-line);
+      }
+
+      .dark .card-head {
+        border-color: rgba(255, 255, 255, 0.1);
+      }
+
+      .card-head h4 {
+        margin: 0;
+        font-size: 19px;
+      }
+
+      .card-head p {
+        margin: 3px 0 0;
+        color: var(--paper-muted);
+        font-size: 14px;
+      }
+
+      .dark .card-head p {
+        color: rgba(255, 255, 255, 0.55);
+      }
+
+      .ledger-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .ledger-table th,
+      .ledger-table td {
+        padding: 13px 14px;
+        border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+        text-align: left;
+        vertical-align: top;
+        font-size: 14px;
+      }
+
+      .ledger-table th {
+        color: rgba(15, 23, 42, 0.5);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .ledger-row {
+        cursor: pointer;
+      }
+
+      .ledger-row:hover,
+      .ledger-row.active {
+        background: #f0f3ff;
+      }
+
+      .source-title {
+        font-weight: 780;
+      }
+
+      .source-sub {
+        margin-top: 4px;
+        color: var(--paper-muted);
+        font-size: 13px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 8px;
+        border-radius: 7px;
+        border: 1px solid rgba(15, 23, 42, 0.1);
+        background: #f8fafc;
+        font-size: 12px;
+        font-weight: 750;
+        white-space: nowrap;
+      }
+
+      .pill.fresh {
+        border-color: rgba(16, 185, 129, 0.3);
+        background: #ecfdf5;
+        color: #047857;
+      }
+
+      .pill.stale {
+        border-color: rgba(245, 158, 11, 0.34);
+        background: #fffbeb;
+        color: #92400e;
+      }
+
+      .pill.contradicted {
+        border-color: rgba(244, 63, 94, 0.32);
+        background: #fff1f2;
+        color: #be123c;
+      }
+
+      .pill.approved {
+        border-color: rgba(79, 70, 229, 0.26);
+        background: #eef2ff;
+        color: #3730a3;
+      }
+
+      .pill.inferred {
+        border-color: rgba(8, 145, 178, 0.25);
+        background: #ecfeff;
+        color: #0e7490;
+      }
+
+      .ledger-detail {
+        padding: 16px;
+      }
+
+      .detail-box {
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        padding: 16px;
+        background: rgba(0, 0, 0, 0.22);
+      }
+
+      .detail-box + .detail-box {
+        margin-top: 12px;
+      }
+
+      .detail-label {
+        color: var(--cyan);
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .detail-value {
+        margin: 7px 0 0;
+        color: rgba(255, 255, 255, 0.78);
+        line-height: 1.55;
+      }
+
+      .memory-flow {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+        padding: 16px;
+      }
+
+      .flow-step {
+        min-height: 110px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.22);
+        padding: 13px;
+      }
+
+      .flow-step span {
+        color: var(--cyan);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .flow-step strong {
+        display: block;
+        margin-top: 14px;
+      }
+
+      .flow-step p {
+        margin: 6px 0 0;
+        color: rgba(255, 255, 255, 0.55);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .studio-layout {
+        display: grid;
+        grid-template-columns: 0.85fr 1.15fr;
+        gap: 14px;
+        padding: 16px;
+      }
+
+      .recommendation-card {
+        padding: 16px;
+      }
+
+      .rec-title {
+        margin: 0;
+        font-size: 24px;
+        line-height: 1.18;
+      }
+
+      .rec-text {
+        color: var(--paper-muted);
+        line-height: 1.62;
+      }
+
+      .mini-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .mini-stat {
+        border: 1px solid var(--paper-line);
+        border-radius: 9px;
+        background: #fafafa;
+        padding: 12px;
+      }
+
+      .mini-stat span {
+        display: block;
+        color: var(--paper-muted);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .mini-stat strong {
+        display: block;
+        margin-top: 6px;
+        font-size: 17px;
+      }
+
+      .timeline {
+        margin-top: 16px;
+        display: grid;
+        gap: 9px;
+      }
+
+      .timeline-item {
+        display: grid;
+        grid-template-columns: 26px 1fr;
+        gap: 10px;
+        align-items: start;
+      }
+
+      .timeline-dot {
+        display: grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: #ecfeff;
+        color: #0891b2;
+        font-weight: 800;
+        font-size: 12px;
+      }
+
+      .timeline-item p {
+        margin: 2px 0 0;
+        color: var(--paper-muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .artifact-tabs {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        padding: 14px 16px 0;
+      }
+
+      .artifact-tab {
+        border: 1px solid var(--paper-line);
+        border-radius: 999px;
+        background: white;
+        color: rgba(15, 23, 42, 0.68);
+        padding: 9px 12px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 750;
+      }
+
+      .artifact-tab.active {
+        background: black;
+        border-color: black;
+        color: white;
+      }
+
+      .artifact-body {
+        padding: 16px;
+      }
+
+      .artifact-preview {
+        border: 1px solid var(--paper-line);
+        border-radius: 12px;
+        background: #fbfaf8;
+        min-height: 390px;
+        overflow: hidden;
+      }
+
+      .artifact-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--paper-line);
+        background: white;
+      }
+
+      .artifact-toolbar strong {
+        font-size: 14px;
+      }
+
+      .artifact-doc {
+        padding: 20px;
+        line-height: 1.62;
+        color: rgba(15, 23, 42, 0.82);
+        white-space: pre-wrap;
+      }
+
+      .artifact-doc h5 {
+        margin: 0 0 10px;
+        color: black;
+        font-size: 19px;
+      }
+
+      .execution-footer {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        padding: 0 16px 16px;
+      }
+
+      .queued-card {
+        border: 1px solid var(--paper-line);
+        border-radius: 10px;
+        background: #ffffff;
+        padding: 12px;
+      }
+
+      .queued-card span {
+        color: #0891b2;
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .queued-card strong {
+        display: block;
+        margin-top: 8px;
+      }
+
+      .queued-card p {
+        margin: 5px 0 0;
+        color: var(--paper-muted);
+        font-size: 13px;
+      }
+
+      .comparison {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .concept-card {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.06);
+        padding: 22px;
+      }
+
+      .concept-card h3 {
+        margin: 0;
+        font-size: 24px;
+      }
+
+      .concept-card p {
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      .concept-card ul {
+        margin: 18px 0 0;
+        padding-left: 18px;
+        color: rgba(255, 255, 255, 0.68);
+        line-height: 1.75;
+      }
+
+      @media (max-width: 1080px) {
+        .section-title,
+        .ledger-layout,
+        .studio-layout,
+        .comparison {
+          grid-template-columns: 1fr;
+        }
+
+        .memory-flow,
+        .execution-footer,
+        .hero-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .app-window {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          display: none;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .shell {
+          width: calc(100vw - 16px);
+          margin-top: 8px;
+          border-radius: 18px;
+        }
+
+        .topbar {
+          padding: 16px;
+        }
+
+        .nav-pills,
+        .header-action {
+          display: none;
+        }
+
+        .hero,
+        .section {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+
+        .workspace-head {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .ledger-table th:nth-child(3),
+        .ledger-table td:nth-child(3),
+        .ledger-table th:nth-child(4),
+        .ledger-table td:nth-child(4) {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="#">
+          <span class="brand-mark">✣</span>
+          <span>Flow360 Innovation Lab</span>
+        </a>
+        <nav class="nav-pills" aria-label="Concept navigation">
+          <a href="#ledger">Memory Ledger</a>
+          <a href="#studio">Execution Studio</a>
+          <a href="#why">Why It Wins</a>
+        </nav>
+        <a class="header-action" href="#studio">Preview Loop →</a>
+      </header>
+
+      <section class="hero">
+        <div class="watermark">FLOW360</div>
+        <span class="horizon" aria-hidden="true"></span>
+        <span class="eyebrow">Agentic decision intelligence concepts</span>
+        <h1>Two features that make Flow360 feel less like RAG.</h1>
+        <p>
+          This standalone mockup shows how Memory Ledger and Approval Execution Studio would work inside the
+          Flow360 product experience, using the same Aarogya, NavaPay, and PrithviGrid demo world.
+        </p>
+        <div class="hero-grid">
+          <div class="hero-card">
+            <span>01</span>
+            <strong>Memory Ledger</strong>
+            <span>Shows whether memory is fresh, stale, contradicted, approved, or inferred.</span>
+          </div>
+          <div class="hero-card">
+            <span>02</span>
+            <strong>Approval Execution Studio</strong>
+            <span>Turns an accepted recommendation into artifacts the business can actually send/use.</span>
+          </div>
+          <div class="hero-card">
+            <span>03</span>
+            <strong>Closed Loop</strong>
+            <span>Review feedback updates memory so future recommendations improve.</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="ledger" class="section">
+        <div class="section-title">
+          <div>
+            <span class="tag">Concept 01</span>
+            <h2>Memory Ledger</h2>
+          </div>
+          <p>
+            Normal RAG says, "I found a document." Flow360 should say, "This memory is fresh, approved,
+            contradicted by a newer source, or inferred by an agent." That makes memory auditable like enterprise
+            knowledge, not just a vector search result.
+          </p>
+        </div>
+
+        <div class="app-window">
+          <aside class="sidebar">
+            <div class="brand">
+              <span class="brand-mark">✣</span>
+              <span>Flow360</span>
+            </div>
+            <button class="side-link"><span class="dot"></span>Dashboard</button>
+            <button class="side-link"><span class="dot"></span>CRM</button>
+            <button class="side-link"><span class="dot"></span>Meetings & Mail</button>
+            <button class="side-link active"><span class="dot"></span>Memory Ledger</button>
+            <button class="side-link"><span class="dot"></span>Execution Studio</button>
+          </aside>
+
+          <main class="workspace">
+            <div class="workspace-head">
+              <div>
+                <h3>Aarogya Health Network</h3>
+                <p>Living account memory with freshness, trust state, contradictions, and reviewer approval.</p>
+              </div>
+              <button class="black-button">Run Memory Audit</button>
+            </div>
+
+            <div class="ledger-layout">
+              <section class="paper-card">
+                <div class="card-head">
+                  <div>
+                    <h4>Account Memory Ledger</h4>
+                    <p>Click a memory item to see why it can or cannot influence the next best action.</p>
+                  </div>
+                  <span class="pill approved">12 trusted items</span>
+                </div>
+
+                <table class="ledger-table" aria-label="Memory ledger">
+                  <thead>
+                    <tr>
+                      <th>Memory</th>
+                      <th>State</th>
+                      <th>Trust</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="ledger-row active" data-index="0">
+                      <td>
+                        <div class="source-title">Aarogya Credentialing Checklist</div>
+                        <div class="source-sub">Rule memory from Knowledge Base</div>
+                      </td>
+                      <td><span class="pill fresh">Fresh</span></td>
+                      <td><span class="pill approved">Human-approved</span></td>
+                      <td>Use in planner</td>
+                    </tr>
+                    <tr class="ledger-row" data-index="1">
+                      <td>
+                        <div class="source-title">Candidate Profile - Ananya Sharma</div>
+                        <div class="source-sub">Profile memory from Candidates/BGV</div>
+                      </td>
+                      <td><span class="pill contradicted">Contradicted</span></td>
+                      <td><span class="pill inferred">AI-inferred</span></td>
+                      <td>Needs review</td>
+                    </tr>
+                    <tr class="ledger-row" data-index="2">
+                      <td>
+                        <div class="source-title">May SLA Breach RCA</div>
+                        <div class="source-sub">Episodic memory from Risks</div>
+                      </td>
+                      <td><span class="pill stale">Stale but relevant</span></td>
+                      <td><span class="pill approved">Human-approved</span></td>
+                      <td>Use as warning</td>
+                    </tr>
+                    <tr class="ledger-row" data-index="3">
+                      <td>
+                        <div class="source-title">CFO Premium Approval Email</div>
+                        <div class="source-sub">Raw memory from Meetings & Mail</div>
+                      </td>
+                      <td><span class="pill fresh">Fresh</span></td>
+                      <td><span class="pill fresh">Source-backed</span></td>
+                      <td>Use in evidence</td>
+                    </tr>
+                    <tr class="ledger-row" data-index="4">
+                      <td>
+                        <div class="source-title">Renewal Trust Risk Pattern</div>
+                        <div class="source-sub">AI-inferred memory from past reviews</div>
+                      </td>
+                      <td><span class="pill fresh">Fresh</span></td>
+                      <td><span class="pill inferred">AI-inferred</span></td>
+                      <td>Explain only</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </section>
+
+              <section class="paper-card dark">
+                <div class="card-head">
+                  <div>
+                    <h4 id="ledgerTitle">Aarogya Credentialing Checklist</h4>
+                    <p id="ledgerSubtitle">Rule memory | 96% trust</p>
+                  </div>
+                  <span id="ledgerBadge" class="pill fresh">Fresh</span>
+                </div>
+                <div class="ledger-detail">
+                  <div class="detail-box">
+                    <div class="detail-label">Why it matters</div>
+                    <p id="ledgerWhy" class="detail-value">
+                      This memory blocks unsafe shortlist recommendations. Clinical candidates cannot be marked ready
+                      unless license, BGV, immunization, and facility packet are complete.
+                    </p>
+                  </div>
+                  <div class="detail-box">
+                    <div class="detail-label">Evidence chain</div>
+                    <p id="ledgerEvidence" class="detail-value">
+                      Source: credentialing_checklist.md. Confirmed by Meera Nair. Used by BGV agent and planner.
+                    </p>
+                  </div>
+                  <div class="detail-box">
+                    <div class="detail-label">Planner rule</div>
+                    <p id="ledgerRule" class="detail-value">
+                      Allow this memory to influence recommendations directly because it is human-approved and current.
+                    </p>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <div class="memory-flow">
+              <div class="flow-step">
+                <span>01 Ingested</span>
+                <strong>Source enters memory</strong>
+                <p>CRM note, email, checklist, RCA, or candidate profile is saved.</p>
+              </div>
+              <div class="flow-step">
+                <span>02 Classified</span>
+                <strong>Memory type assigned</strong>
+                <p>Profile, rule, raw, episodic, or semantic memory.</p>
+              </div>
+              <div class="flow-step">
+                <span>03 Audited</span>
+                <strong>Trust state computed</strong>
+                <p>Fresh, stale, contradicted, approved, or inferred.</p>
+              </div>
+              <div class="flow-step">
+                <span>04 Used</span>
+                <strong>Planner cites it</strong>
+                <p>Recommendation gets evidence and confidence.</p>
+              </div>
+              <div class="flow-step">
+                <span>05 Learned</span>
+                <strong>Review updates ledger</strong>
+                <p>Human approval/rejection changes future trust.</p>
+              </div>
+            </div>
+          </main>
+        </div>
+      </section>
+
+      <section id="studio" class="section">
+        <div class="section-title">
+          <div>
+            <span class="tag">Concept 02</span>
+            <h2>Approval Execution Studio</h2>
+          </div>
+          <p>
+            Most projects stop at "here is a recommendation." This shows what happens after the user approves it:
+            Flow360 prepares business artifacts, queues the right tasks, and writes execution memory back into the system.
+          </p>
+        </div>
+
+        <div class="app-window">
+          <aside class="sidebar">
+            <div class="brand">
+              <span class="brand-mark">✣</span>
+              <span>Flow360</span>
+            </div>
+            <button class="side-link"><span class="dot"></span>Dashboard</button>
+            <button class="side-link"><span class="dot"></span>Evidence</button>
+            <button class="side-link active"><span class="dot"></span>Execution Studio</button>
+            <button class="side-link"><span class="dot"></span>Memory</button>
+          </aside>
+
+          <main class="workspace">
+            <div class="workspace-head">
+              <div>
+                <h3>Approved Action Workspace</h3>
+                <p>Selected recommendation becomes executable customer communication, CRM work, and memory updates.</p>
+              </div>
+              <div style="display: flex; gap: 10px; flex-wrap: wrap">
+                <button class="ghost-button">Reject</button>
+                <button class="black-button" id="approveButton">Approve & Generate</button>
+              </div>
+            </div>
+
+            <div class="studio-layout">
+              <section class="paper-card recommendation-card">
+                <span class="pill contradicted">Critical</span>
+                <h4 class="rec-title">Block Ananya Sharma from final shortlist until license clears</h4>
+                <p class="rec-text">
+                  Ask Meera Nair to verify Karnataka license status before 2:30 PM. Mark Ananya as conditional
+                  and include Devika Iyer plus one backup candidate in the 4 PM board shortlist.
+                </p>
+
+                <div class="mini-grid">
+                  <div class="mini-stat">
+                    <span>Confidence</span>
+                    <strong>89%</strong>
+                  </div>
+                  <div class="mini-stat">
+                    <span>Owner</span>
+                    <strong>Compliance Lead</strong>
+                  </div>
+                  <div class="mini-stat">
+                    <span>Due</span>
+                    <strong>Today 2:30 PM</strong>
+                  </div>
+                  <div class="mini-stat">
+                    <span>Business metric</span>
+                    <strong>SLA start risk</strong>
+                  </div>
+                </div>
+
+                <div class="timeline">
+                  <div class="timeline-item">
+                    <span class="timeline-dot">1</span>
+                    <div>
+                      <strong>Evidence checked</strong>
+                      <p>Credentialing checklist, board email thread, May SLA breach RCA.</p>
+                    </div>
+                  </div>
+                  <div class="timeline-item">
+                    <span class="timeline-dot">2</span>
+                    <div>
+                      <strong>Human approval required</strong>
+                      <p>Action changes customer-facing shortlist language.</p>
+                    </div>
+                  </div>
+                  <div class="timeline-item">
+                    <span class="timeline-dot">3</span>
+                    <div>
+                      <strong>Execution artifacts generated</strong>
+                      <p>Email, CRM task, escalation note, SLA update, meeting summary.</p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="paper-card">
+                <div class="card-head">
+                  <div>
+                    <h4>Generated Artifacts</h4>
+                    <p>Click each artifact. This is what "approve" should create.</p>
+                  </div>
+                  <span id="studioStatus" class="pill stale">Waiting for approval</span>
+                </div>
+                <div class="artifact-tabs">
+                  <button class="artifact-tab active" data-artifact="email">Customer Email</button>
+                  <button class="artifact-tab" data-artifact="crm">CRM Task</button>
+                  <button class="artifact-tab" data-artifact="escalation">Escalation Note</button>
+                  <button class="artifact-tab" data-artifact="sla">SLA Update</button>
+                  <button class="artifact-tab" data-artifact="summary">Meeting Summary</button>
+                </div>
+                <div class="artifact-body">
+                  <div class="artifact-preview">
+                    <div class="artifact-toolbar">
+                      <strong id="artifactTitle">Customer Email Draft</strong>
+                      <button class="small-button">Copy draft</button>
+                    </div>
+                    <div id="artifactDoc" class="artifact-doc"></div>
+                  </div>
+                </div>
+                <div class="execution-footer">
+                  <div class="queued-card">
+                    <span>CRM</span>
+                    <strong>Task queued</strong>
+                    <p>Owner: Meera Nair</p>
+                  </div>
+                  <div class="queued-card">
+                    <span>Email</span>
+                    <strong>Draft ready</strong>
+                    <p>Reviewer: Ananya Suresh</p>
+                  </div>
+                  <div class="queued-card">
+                    <span>SLA</span>
+                    <strong>Risk updated</strong>
+                    <p>Credentialing blocker</p>
+                  </div>
+                  <div class="queued-card">
+                    <span>Memory</span>
+                    <strong>Feedback saved</strong>
+                    <p>Future shortlists learn</p>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </main>
+        </div>
+      </section>
+
+      <section id="why" class="section">
+        <div class="comparison">
+          <article class="concept-card">
+            <span class="tag">Why Memory Ledger is unique</span>
+            <h3>It makes AI memory auditable.</h3>
+            <p>
+              Instead of just retrieving chunks, the system explains whether a memory is allowed to influence a
+              recommendation. That feels like enterprise decision infrastructure.
+            </p>
+            <ul>
+              <li>Fresh memory can be used directly.</li>
+              <li>Stale memory can be used as warning context.</li>
+              <li>Contradicted memory must be reviewed.</li>
+              <li>Human-approved memory gets higher trust.</li>
+              <li>AI-inferred memory can explain patterns, but should not silently execute actions.</li>
+            </ul>
+          </article>
+
+          <article class="concept-card">
+            <span class="tag">Why Execution Studio is unique</span>
+            <h3>It closes the recommendation-to-action loop.</h3>
+            <p>
+              Judges will see that Flow360 does not only say what to do. It prepares the practical artifacts a real
+              account manager or operations team would need.
+            </p>
+            <ul>
+              <li>Customer email draft for communication.</li>
+              <li>CRM task for ownership and due date.</li>
+              <li>Escalation note for internal alignment.</li>
+              <li>SLA update for risk tracking.</li>
+              <li>Meeting summary for institutional memory.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const ledgerItems = [
+        {
+          title: "Aarogya Credentialing Checklist",
+          subtitle: "Rule memory | 96% trust",
+          badge: "Fresh",
+          badgeClass: "pill fresh",
+          why:
+            "This memory blocks unsafe shortlist recommendations. Clinical candidates cannot be marked ready unless license, BGV, immunization, and facility packet are complete.",
+          evidence:
+            "Source: credentialing_checklist.md. Confirmed by Meera Nair. Used by BGV agent and planner.",
+          rule: "Allow this memory to influence recommendations directly because it is human-approved and current.",
+        },
+        {
+          title: "Candidate Profile - Ananya Sharma",
+          subtitle: "Profile memory | 68% trust",
+          badge: "Contradicted",
+          badgeClass: "pill contradicted",
+          why:
+            "The candidate has high fit score, but a newer compliance huddle says license verification is still pending. This cannot be used as ready-to-start proof.",
+          evidence:
+            "Conflict: candidate profile says background complete; compliance huddle says state license pending.",
+          rule: "Use only with a conditional label. Require human review before customer-facing shortlist.",
+        },
+        {
+          title: "May SLA Breach RCA",
+          subtitle: "Episodic memory | 88% trust",
+          badge: "Stale but relevant",
+          badgeClass: "pill stale",
+          why:
+            "The incident is older, but the pattern is the same: credentialing checked too late caused delayed starts and executive escalation.",
+          evidence:
+            "Source: may_sla_incident_rca.md. Approved by account owner after corrective-action review.",
+          rule: "Use as warning context and raise confidence penalty if a new recommendation repeats the same failure mode.",
+        },
+        {
+          title: "CFO Premium Approval Email",
+          subtitle: "Raw memory | 91% trust",
+          badge: "Fresh",
+          badgeClass: "pill fresh",
+          why:
+            "This email defines the commercial approval requirement for premium-rate candidates.",
+          evidence:
+            "Source: cfo_email_thread.md. Requires vacancy cost, overtime exposure, and backup availability.",
+          rule: "Use in evidence for cost-risk approval recommendations.",
+        },
+        {
+          title: "Renewal Trust Risk Pattern",
+          subtitle: "AI-inferred memory | 74% trust",
+          badge: "AI-inferred",
+          badgeClass: "pill inferred",
+          why:
+            "The agent inferred that Aarogya's renewal risk is more about execution trust than price sensitivity.",
+          evidence:
+            "Inferred from stakeholder map, renewal notes, May SLA RCA, and review feedback.",
+          rule: "Use for explanation and prioritization, but require direct evidence before executing customer commitments.",
+        },
+      ];
+
+      document.querySelectorAll(".ledger-row").forEach((row) => {
+        row.addEventListener("click", () => {
+          document.querySelectorAll(".ledger-row").forEach((item) => item.classList.remove("active"));
+          row.classList.add("active");
+          const item = ledgerItems[Number(row.dataset.index)];
+          document.getElementById("ledgerTitle").textContent = item.title;
+          document.getElementById("ledgerSubtitle").textContent = item.subtitle;
+          const badge = document.getElementById("ledgerBadge");
+          badge.textContent = item.badge;
+          badge.className = item.badgeClass;
+          document.getElementById("ledgerWhy").textContent = item.why;
+          document.getElementById("ledgerEvidence").textContent = item.evidence;
+          document.getElementById("ledgerRule").textContent = item.rule;
+        });
+      });
+
+      const artifacts = {
+        email: {
+          title: "Customer Email Draft",
+          doc: `Subject: Aarogya ICU shortlist - credentialing status and backup coverage
+
+Hi Kavya,
+
+Sharing the ICU shortlist structure for the 4 PM board review.
+
+We are separating candidates into Ready, Conditional, and Backup so the team does not treat pending credentialing as final clearance.
+
+Ready:
+- Devika Iyer, pending only night-shift confirmation
+
+Conditional:
+- Ananya Sharma, Karnataka nursing license verification pending
+- Riya Menon, immunization attestation pending
+
+Next step:
+Meera Nair will verify Ananya's license status before 2:30 PM. We will update the shortlist once the compliance status is confirmed.
+
+Regards,
+Ananya Suresh`,
+        },
+        crm: {
+          title: "CRM Task",
+          doc: `Task: Verify Ananya Sharma license status before board shortlist
+
+Account: Aarogya Health Network
+Owner: Meera Nair
+Due: Today, 2:30 PM
+Priority: Critical
+
+Context:
+Ananya Sharma has high clinical fit, but Karnataka nursing license verification is pending. Do not mark candidate ready until verification clears.
+
+Acceptance criteria:
+- License source checked
+- Status recorded in CRM
+- Shortlist category updated as Ready or Conditional
+- Backup candidate attached if still pending`,
+        },
+        escalation: {
+          title: "Internal Escalation Note",
+          doc: `Escalation: Credentialing blocker before Aarogya board review
+
+Why this matters:
+The May SLA breach was caused by late license verification. Current shortlist has similar failure pattern.
+
+Decision required:
+Can Ananya Sharma remain in the 4 PM customer shortlist as conditional, or should she be replaced with a fully verified backup?
+
+Evidence:
+- Credentialing checklist requires state license verification.
+- Compliance huddle confirms license is pending.
+- Board email requests clear Ready / Conditional / Backup separation.
+
+Recommended owner:
+Compliance Lead with Account Manager review.`,
+        },
+        sla: {
+          title: "SLA Risk Update",
+          doc: `SLA Risk Record Update
+
+Account: Aarogya Health Network
+Risk type: Start-date breach risk
+Current status: Elevated
+Driver: License verification pending for high-fit ICU candidate
+
+Mitigation:
+1. Verify license before 2:30 PM.
+2. Mark candidate conditional if unresolved.
+3. Attach verified backup candidate.
+4. Send board shortlist with credentialing status visible.
+
+Expected effect:
+Reduces repeat risk from May SLA breach pattern.`,
+        },
+        summary: {
+          title: "Meeting Summary",
+          doc: `Decision Summary
+
+The approved recommendation prevents Flow360 from sending a misleading final shortlist. The system will prepare a conditional shortlist, escalate license verification, and queue backup coverage.
+
+Memory update:
+Future Aarogya shortlist recommendations must visibly separate Ready, Conditional, and Backup candidates. AI-inferred candidate readiness cannot override compliance-source memory.
+
+Human review:
+Approved by Account Manager before customer-facing communication.`,
+        },
+      };
+
+      function setArtifact(key) {
+        document.querySelectorAll(".artifact-tab").forEach((tab) => {
+          tab.classList.toggle("active", tab.dataset.artifact === key);
+        });
+        document.getElementById("artifactTitle").textContent = artifacts[key].title;
+        document.getElementById("artifactDoc").textContent = artifacts[key].doc;
+      }
+
+      document.querySelectorAll(".artifact-tab").forEach((tab) => {
+        tab.addEventListener("click", () => setArtifact(tab.dataset.artifact));
+      });
+
+      document.getElementById("approveButton").addEventListener("click", () => {
+        const status = document.getElementById("studioStatus");
+        status.textContent = "Artifacts generated";
+        status.className = "pill fresh";
+      });
+
+      setArtifact("email");
+    </script>
+  </body>
+</html>

@@ -287,7 +287,8 @@ def _guide_suggestions(current_view: str) -> list[str]:
         "knowledge": ["Load sample", "Save and ingest to memory", "Run Planner"],
         "risks": ["Load sample", "Save and ingest to memory", "Run Planner"],
         "candidates": ["Run BGV", "Save and ingest to memory", "Run Planner"],
-        "memory": ["Read Memory Graph", "Ask Memory", "Open source tabs"],
+        "memory": ["Read Memory Graph", "Inspect Memory Ledger", "Open source tabs"],
+        "execution": ["Approve & Generate", "Copy artifact", "Open Memory"],
         "trace": ["Run Planner", "Review agent trace", "Check retrieved evidence"],
     }
     return by_view.get(current_view, ["Run Planner", "Open Dashboard", "Ask FlowGuide"])
@@ -341,7 +342,12 @@ def _screen_grounded_guide(payload: GuideChatRequest, account_name: str, visible
         total = sum(int(value) for value in source_counts.values()) if isinstance(source_counts, dict) else 0
         return (
             f"You are on Memory for {account_name}. Use the Memory Graph to see how CRM, Meetings & Mail, Knowledge, Risks, and Candidates/BGV connect to the account. "
-            f"There are {total} visible source entries. Ask Memory is for questions about stored context, not for creating new recommendations."
+            f"There are {total} visible source entries. Use Memory Ledger to check whether a memory is fresh, stale, contradicted, human-approved, or AI-inferred before trusting it."
+        )
+    if payload.current_view == "execution":
+        return (
+            f"You are on Execution for {account_name}. Start with the selected recommendation, click Approve & Generate if it is correct, then copy the artifact you need: customer email, CRM task, escalation note, SLA update, or meeting summary. "
+            "After approval, Flow360 writes the review and execution outcome back to memory."
         )
     if payload.current_view == "trace":
         return (

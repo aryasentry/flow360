@@ -457,7 +457,21 @@ class PlatformStore:
             values = [item for item in values if item.get("account_id") == account_id]
         return sorted(values, key=lambda item: item.get("created_at", ""), reverse=True)
 
+    def _get_recommendation_row(self, recommendation_id: str) -> dict[str, Any]:
+        if recommendation_id in self._recommendations:
+            return self._recommendations[recommendation_id]
+        if self.client:
+            try:
+                response = self.client.table("recommendations").select("*").eq("id", recommendation_id).single().execute()
+                if response.data:
+                    self._recommendations[recommendation_id] = response.data
+                    return response.data
+            except Exception:
+                pass
+        return {}
+
     def review_recommendation(self, recommendation_id: str, decision: str, reviewer: str, notes: str) -> dict[str, Any]:
+        rec = self._get_recommendation_row(recommendation_id)
         review = {
             "id": f"review-{uuid.uuid4().hex[:10]}",
             "recommendation_id": recommendation_id,
@@ -467,8 +481,9 @@ class PlatformStore:
             "created_at": datetime.utcnow().isoformat(),
         }
 
-        if recommendation_id in self._recommendations:
-            self._recommendations[recommendation_id]["status"] = decision
+        if rec:
+            rec["status"] = decision
+            self._recommendations[recommendation_id] = rec
 
         if self.client:
             try:
@@ -484,7 +499,7 @@ class PlatformStore:
         return {"review": review, "action_execution": execution}
 
     def _write_feedback_memory(self, recommendation_id: str, decision: str, notes: str) -> None:
-        rec = self._recommendations.get(recommendation_id, {})
+        rec = self._get_recommendation_row(recommendation_id)
         memory_id = f"mem-feedback-{recommendation_id}"
         summary = f"{decision.title()} recommendation '{rec.get('title', recommendation_id)}'."
         if notes:
@@ -534,9 +549,22 @@ class PlatformStore:
         return card
 
     def _create_action_execution(self, recommendation_id: str, reviewer: str) -> dict[str, Any] | None:
-        rec = self._recommendations.get(recommendation_id, {})
+        rec = self._get_recommendation_row(recommendation_id)
         if not rec:
             return None
+        account = self.get_account(rec.get("account_id", DEMO_ACCOUNT_ID))
+        artifacts = self._execution_artifacts(rec, account.name, reviewer)
+        evidence_titles = [
+            item.get("source_title", "Enterprise evidence")
+            for item in rec.get("evidence", [])
+            if isinstance(item, dict)
+        ][:4]
+        next_steps = [
+            f"Assign {rec.get('owner_role', 'Account Manager')}",
+            f"Complete by {rec.get('due_date', 'the committed due date')}",
+            "Send or log the generated artifact in the system of record",
+            "Capture outcome as reviewed memory",
+        ]
         execution = {
             "id": f"exec-{uuid.uuid4().hex[:10]}",
             "recommendation_id": recommendation_id,
@@ -544,12 +572,32 @@ class PlatformStore:
             "title": rec.get("title", "Approved next best action"),
             "owner_role": rec.get("owner_role", "Account Manager"),
             "status": "queued",
-            "draft": f"Approved by {reviewer}. Next step: {rec.get('action', '')}",
+            "draft": artifacts["email"]["body"],
+            "artifacts": artifacts,
+            "next_steps": next_steps,
+            "metadata": {
+                "artifacts": artifacts,
+                "evidence_titles": evidence_titles,
+                "next_steps": next_steps,
+                "approval_summary": f"Approved by {reviewer}. Flow360 generated execution artifacts and queued memory writeback.",
+            },
             "created_at": datetime.utcnow().isoformat(),
         }
         if self.client:
             try:
-                self.client.table("action_executions").upsert(execution).execute()
+                self.client.table("action_executions").upsert(
+                    {
+                        "id": execution["id"],
+                        "recommendation_id": execution["recommendation_id"],
+                        "account_id": execution["account_id"],
+                        "title": execution["title"],
+                        "owner_role": execution["owner_role"],
+                        "status": execution["status"],
+                        "draft": execution["draft"],
+                        "metadata": execution["metadata"],
+                        "created_at": execution["created_at"],
+                    }
+                ).execute()
             except Exception:
                 pass
         card = {
@@ -564,6 +612,80 @@ class PlatformStore:
         }
         self._memory_cards[card["id"]] = card
         return execution
+
+    @staticmethod
+    def _execution_artifacts(rec: dict[str, Any], account_name: str, reviewer: str) -> dict[str, dict[str, str]]:
+        evidence_titles = [
+            item.get("source_title", "Enterprise evidence")
+            for item in rec.get("evidence", [])
+            if isinstance(item, dict)
+        ][:4]
+        evidence_line = "; ".join(evidence_titles) or "current account memory and retrieved enterprise context"
+        title = rec.get("title", "Approved next best action")
+        action = rec.get("action") or title
+        owner = rec.get("owner_role", "Account Manager")
+        due = rec.get("due_date", "the committed due date")
+        rationale = rec.get("rationale", "Recommendation accepted after human review.")
+        metric = rec.get("business_metric", "Improve account outcome.")
+        priority = rec.get("priority", "medium")
+        confidence = rec.get("confidence", 0)
+
+        return {
+            "email": {
+                "title": "Customer Email Draft",
+                "body": (
+                    f"Subject: {account_name} - {title}\n\n"
+                    "Hi team,\n\n"
+                    "Following the latest review, we recommend the next step below:\n\n"
+                    f"{action}\n\n"
+                    f"Why this matters:\n{rationale}\n\n"
+                    f"Evidence checked:\n{evidence_line}\n\n"
+                    f"Owner: {owner}\nDue: {due}\nTarget outcome: {metric}\n\n"
+                    "Please confirm if we can proceed with this plan or if another stakeholder should be included before execution."
+                ),
+            },
+            "crm": {
+                "title": "CRM Task",
+                "body": (
+                    f"Task: {title}\nAccount: {account_name}\nOwner: {owner}\nDue: {due}\n"
+                    f"Priority: {priority}\nConfidence: {confidence}%\n\nDescription:\n{action}\n\n"
+                    f"Evidence to attach:\n{evidence_line}\n\n"
+                    "Completion checklist:\n"
+                    "- Confirm the named owner accepted the task.\n"
+                    "- Attach evidence or customer communication.\n"
+                    "- Update renewal/SLA risk after completion.\n"
+                    "- Record result as human-reviewed memory."
+                ),
+            },
+            "escalation": {
+                "title": "Internal Escalation Note",
+                "body": (
+                    f"Escalation: {title}\nAccount: {account_name}\nBusiness risk: {metric}\n\n"
+                    f"Decision needed:\n{action}\n\nReason for escalation:\n{rationale}\n\n"
+                    f"Evidence:\n{evidence_line}\n\n"
+                    f"Ask:\nAssign {owner} to complete this by {due}, then update Flow360 memory with the outcome."
+                ),
+            },
+            "sla": {
+                "title": "SLA / Risk Register Update",
+                "body": (
+                    f"Account: {account_name}\nUpdate type: Next best action approved\nRisk level: {priority}\n"
+                    f"Action: {title}\n\nSLA or business metric affected:\n{metric}\n\n"
+                    f"Mitigation:\n{action}\n\nControl evidence:\n{evidence_line}\n\n"
+                    "Follow-up:\nReview after the due date and mark the result as resolved, delayed, or escalated."
+                ),
+            },
+            "summary": {
+                "title": "Meeting Summary",
+                "body": (
+                    "Decision Summary\n\n"
+                    f"Flow360 recommended: {title}\n\nApproved action:\n{action}\n\n"
+                    f"Reasoning:\n{rationale}\n\nSources used:\n{evidence_line}\n\n"
+                    f"Owner and timing:\n{owner} - {due}\n\nHuman review:\nApproved by {reviewer}.\n\n"
+                    "Memory update:\nFuture planner runs should remember that this action was reviewed by a human and compare similar recommendations against the same evidence pattern."
+                ),
+            },
+        }
 
     def get_memory(self, entity_type: str, entity_id: str) -> list[MemoryCard]:
         cards_by_id = {

@@ -54,6 +54,7 @@ import type {
   CandidateProfile,
   DashboardState,
   GuideMessage,
+  MemoryCard,
   Recommendation,
   SourceCollection,
   SourceEntry,
@@ -68,9 +69,46 @@ type ActiveView =
   | "risks"
   | "candidates"
   | "memory"
+  | "execution"
   | "trace";
 
 type FieldSpec = { key: string; label: string; placeholder: string };
+type ExecutionArtifactKey = "email" | "crm" | "escalation" | "sla" | "summary";
+
+type ActionExecution = {
+  id?: string;
+  recommendation_id?: string;
+  account_id?: string;
+  title?: string;
+  owner_role?: string;
+  status?: string;
+  draft?: string;
+  artifacts?: Partial<Record<ExecutionArtifactKey, { title?: string; body?: string } | string>>;
+  metadata?: {
+    artifacts?: Partial<Record<ExecutionArtifactKey, { title?: string; body?: string } | string>>;
+    next_steps?: string[];
+    evidence_titles?: string[];
+    approval_summary?: string;
+  };
+  next_steps?: string[];
+  created_at?: string;
+};
+
+type MemoryLedgerState = "fresh" | "stale" | "contradicted" | "approved" | "inferred" | "review";
+
+type MemoryLedgerItem = {
+  id: string;
+  title: string;
+  source: string;
+  state: MemoryLedgerState;
+  stateLabel: string;
+  trust: number;
+  origin: string;
+  plannerUse: string;
+  why: string;
+  evidence: string;
+  rule: string;
+};
 
 const priorityClass: Record<Recommendation["priority"], string> = {
   critical: "border-rose-200 bg-rose-100 text-rose-700",
@@ -86,6 +124,23 @@ const memoryTypeStyle = {
   raw: "border-slate-200 bg-slate-50 text-slate-800",
   semantic: "border-cyan-200 bg-cyan-50 text-cyan-800",
 } as const;
+
+const ledgerStateStyle: Record<MemoryLedgerState, string> = {
+  fresh: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  stale: "border-amber-200 bg-amber-50 text-amber-800",
+  contradicted: "border-rose-200 bg-rose-50 text-rose-800",
+  approved: "border-indigo-200 bg-indigo-50 text-indigo-800",
+  inferred: "border-cyan-200 bg-cyan-50 text-cyan-800",
+  review: "border-slate-200 bg-slate-50 text-slate-800",
+};
+
+const artifactTabs: Array<{ key: ExecutionArtifactKey; label: string; icon: typeof Mail }> = [
+  { key: "email", label: "Customer Email", icon: Mail },
+  { key: "crm", label: "CRM Task", icon: BriefcaseBusiness },
+  { key: "escalation", label: "Escalation Note", icon: ShieldAlert },
+  { key: "sla", label: "SLA Update", icon: BadgeCheck },
+  { key: "summary", label: "Meeting Summary", icon: ClipboardList },
+];
 
 const sourceLabels: Record<SourceCollection, { title: string; subtitle: string; icon: typeof BriefcaseBusiness; upload: boolean }> = {
   crm: {
@@ -176,6 +231,7 @@ const viewLabels: Record<ActiveView, string> = {
   risks: "Risks",
   candidates: "Candidates/BGV",
   memory: "Memory",
+  execution: "Execution",
   trace: "Trace",
 };
 
@@ -193,12 +249,222 @@ function splitListField(value: unknown) {
     .filter(Boolean);
 }
 
+function titleCase(value: string) {
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function oneLine(value: string, fallback: string) {
+  const cleaned = value.replace(/\s+/g, " ").trim();
+  return cleaned || fallback;
+}
+
+function artifactFromExecution(execution: ActionExecution | null, key: ExecutionArtifactKey) {
+  const raw = execution?.artifacts?.[key] ?? execution?.metadata?.artifacts?.[key];
+  if (!raw) return null;
+  if (typeof raw === "string") return { title: artifactTabs.find((item) => item.key === key)?.label ?? key, body: raw };
+  return {
+    title: raw.title ?? artifactTabs.find((item) => item.key === key)?.label ?? key,
+    body: raw.body ?? "",
+  };
+}
+
+function buildArtifactDraft(account: AccountSummary, recommendation: Recommendation, key: ExecutionArtifactKey) {
+  const evidenceTitles = recommendation.evidence.map((item) => item.source_title).filter(Boolean);
+  const evidenceLine = evidenceTitles.length ? evidenceTitles.slice(0, 3).join("; ") : "current account memory and retrieved context";
+  const action = oneLine(recommendation.action, recommendation.title);
+  const metric = oneLine(recommendation.business_metric, "improve the account outcome");
+
+  const drafts: Record<ExecutionArtifactKey, { title: string; body: string }> = {
+    email: {
+      title: "Customer Email Draft",
+      body: `Subject: ${account.name} - ${recommendation.title}
+
+Hi team,
+
+Following the latest review, we recommend the next step below:
+
+${action}
+
+Why this matters:
+${recommendation.rationale}
+
+Evidence checked:
+${evidenceLine}
+
+Owner: ${recommendation.owner_role}
+Due: ${recommendation.due_date}
+Target outcome: ${metric}
+
+Please confirm if we can proceed with this plan or if another stakeholder should be included before execution.`,
+    },
+    crm: {
+      title: "CRM Task",
+      body: `Task: ${recommendation.title}
+Account: ${account.name}
+Owner: ${recommendation.owner_role}
+Due: ${recommendation.due_date}
+Priority: ${recommendation.priority}
+Confidence: ${recommendation.confidence}%
+
+Description:
+${action}
+
+Evidence to attach:
+${evidenceLine}
+
+Completion checklist:
+- Confirm the named owner accepted the task.
+- Attach evidence or customer communication.
+- Update renewal/SLA risk after completion.
+- Record result as human-reviewed memory.`,
+    },
+    escalation: {
+      title: "Internal Escalation Note",
+      body: `Escalation: ${recommendation.title}
+Account: ${account.name}
+Business risk: ${metric}
+
+Decision needed:
+${action}
+
+Reason for escalation:
+${recommendation.rationale}
+
+Evidence:
+${evidenceLine}
+
+Ask:
+Assign ${recommendation.owner_role} to complete this by ${recommendation.due_date}, then update Flow360 memory with the outcome.`,
+    },
+    sla: {
+      title: "SLA / Risk Register Update",
+      body: `Account: ${account.name}
+Update type: Next best action approved
+Risk level: ${recommendation.priority}
+Action: ${recommendation.title}
+
+SLA or business metric affected:
+${metric}
+
+Mitigation:
+${action}
+
+Control evidence:
+${evidenceLine}
+
+Follow-up:
+Review after the due date and mark the result as resolved, delayed, or escalated.`,
+    },
+    summary: {
+      title: "Meeting Summary",
+      body: `Decision Summary
+
+Flow360 recommended: ${recommendation.title}
+
+Approved action:
+${action}
+
+Reasoning:
+${recommendation.rationale}
+
+Sources used:
+${evidenceLine}
+
+Owner and timing:
+${recommendation.owner_role} - ${recommendation.due_date}
+
+Memory update:
+Future planner runs should remember that this action was reviewed by a human and should compare similar recommendations against the same evidence pattern.`,
+    },
+  };
+
+  return drafts[key];
+}
+
+function buildMemoryLedgerItems(
+  memory: MemoryCard[],
+  sources: Record<SourceCollection, SourceEntry[]>,
+  account: AccountSummary,
+): MemoryLedgerItem[] {
+  const flatSources = Object.entries(sources).flatMap(([collection, entries]) =>
+    entries.map((entry) => ({ collection: collection as SourceCollection, entry })),
+  );
+  return memory.slice(0, 12).map((item) => {
+    const match = flatSources.find(({ entry }) => entry.title === item.title || item.id.endsWith(entry.id));
+    const origin = match ? titleCase(match.collection === "interactions" ? "meetings_mail" : match.collection) : titleCase(item.memory_type);
+    const haystack = `${item.title} ${item.summary}`.toLowerCase();
+    const state: MemoryLedgerState =
+      haystack.includes("approved") || haystack.includes("human review")
+        ? "approved"
+        : haystack.includes("blocked") ||
+            haystack.includes("not be shortlisted") ||
+            haystack.includes("pending") ||
+            haystack.includes("contradict")
+          ? "contradicted"
+          : item.memory_type === "episodic" && (haystack.includes("rca") || haystack.includes("sla") || haystack.includes("incident"))
+            ? "stale"
+            : item.memory_type === "semantic" || haystack.includes("pattern") || haystack.includes("inferred")
+              ? "inferred"
+              : item.confidence >= 84
+                ? "fresh"
+                : "review";
+    const stateLabel: Record<MemoryLedgerState, string> = {
+      fresh: "Fresh",
+      stale: "Stale warning",
+      contradicted: "Needs review",
+      approved: "Human-approved",
+      inferred: "AI-inferred",
+      review: "Review",
+    };
+    const plannerUse: Record<MemoryLedgerState, string> = {
+      fresh: "Use directly",
+      stale: "Use as warning",
+      contradicted: "Block automation",
+      approved: "Raise trust",
+      inferred: "Explain pattern",
+      review: "Ask human",
+    };
+    const why: Record<MemoryLedgerState, string> = {
+      fresh: "This source is current enough to influence ranking, confidence, and due-date urgency.",
+      stale: "This older event still matters as a failure pattern, but should not override newer source data.",
+      contradicted: "This memory contains blockers or unresolved status, so Flow360 should avoid unsafe automatic execution.",
+      approved: "A human has reviewed this decision or memory, so the planner can trust it more strongly in future runs.",
+      inferred: "This is useful pattern memory created by the system, but it should explain recommendations instead of executing them alone.",
+      review: "Confidence is not high enough for silent use, so the user should validate it before approval.",
+    };
+    const rule: Record<MemoryLedgerState, string> = {
+      fresh: "Allow this memory to support recommendations and evidence citations.",
+      stale: "Use this memory as risk context and ask for fresh data if the recommendation depends on it.",
+      contradicted: "Require human review before using this memory to approve an external action.",
+      approved: "Prioritize this memory when similar evidence appears in future planner runs.",
+      inferred: "Use for explanation and pattern detection, not as the only basis for approval.",
+      review: "Lower recommendation confidence until this memory is confirmed by a source or reviewer.",
+    };
+
+    return {
+      id: item.id,
+      title: item.title,
+      source: match?.entry.source_type ?? item.memory_type,
+      state,
+      stateLabel: stateLabel[state],
+      trust: item.confidence,
+      origin,
+      plannerUse: plannerUse[state],
+      why: why[state],
+      evidence: `Origin: ${origin}. Account: ${account.name}. Confidence: ${item.confidence}%. Summary: ${oneLine(item.summary, "No summary available.")}`,
+      rule: rule[state],
+    };
+  });
+}
+
 export function FlowDashboard() {
   const [state, setState] = useState<DashboardState>(fallbackDashboardState);
   const [accountId, setAccountId] = useState(fallbackDashboardState.account.id);
   const [activeView, setActiveView] = useState<ActiveView>("accounts");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [guideCollapsed, setGuideCollapsed] = useState(false);
+  const [guideCollapsed, setGuideCollapsed] = useState(true);
   const [run, setRun] = useState<AgentRunResult | null>(null);
   const [selected, setSelected] = useState<Recommendation | null>(fallbackDashboardState.recommendations[0] ?? null);
   const [interaction, setInteraction] = useState(fallbackDashboardState.demoInteraction);
@@ -208,7 +474,10 @@ export function FlowDashboard() {
   const [loadedPendingIds, setLoadedPendingIds] = useState<Record<string, string>>({});
   const [ingestedPendingIds, setIngestedPendingIds] = useState<Record<string, boolean>>({});
   const [bgvResults, setBgvResults] = useState<Record<string, BGVResult>>({});
-  const [lastExecution, setLastExecution] = useState<Record<string, unknown> | null>(null);
+  const [lastExecution, setLastExecution] = useState<ActionExecution | null>(null);
+  const [activeArtifact, setActiveArtifact] = useState<ExecutionArtifactKey>("email");
+  const [copyStatus, setCopyStatus] = useState("");
+  const [selectedLedgerId, setSelectedLedgerId] = useState<string | null>(null);
   const [guideMessages, setGuideMessages] = useState<GuideMessage[]>([
     {
       role: "assistant",
@@ -226,6 +495,8 @@ export function FlowDashboard() {
       setRun(null);
       const firstRec = data.recommendations[0] ?? null;
       setSelected(firstRec);
+      setLastExecution(null);
+      setSelectedLedgerId(null);
     });
   }, [accountId]);
 
@@ -246,6 +517,10 @@ export function FlowDashboard() {
   const activeSelected = selected && selected.account_id === account.id ? selected : recommendations[0] ?? null;
   const trace = run?.account_id === account.id ? run.agent_trace : [];
   const displayMemory = state.memory;
+  const activeExecution =
+    activeSelected && lastExecution && (!lastExecution.recommendation_id || lastExecution.recommendation_id === activeSelected.id)
+      ? lastExecution
+      : null;
 
   const navItems = useMemo(() => {
     const base: Array<{ id: ActiveView; label: string; icon: typeof BriefcaseBusiness }> = [
@@ -259,7 +534,11 @@ export function FlowDashboard() {
     if (account.supports_candidates) {
       base.push({ id: "candidates", label: "Candidates/BGV", icon: Users });
     }
-    base.push({ id: "memory", label: "Memory", icon: Database }, { id: "trace", label: "Trace", icon: Activity });
+    base.push(
+      { id: "memory", label: "Memory", icon: Database },
+      { id: "execution", label: "Execution", icon: BadgeCheck },
+      { id: "trace", label: "Trace", icon: Activity },
+    );
     return base;
   }, [account.supports_candidates]);
 
@@ -287,7 +566,8 @@ export function FlowDashboard() {
   async function handleReview(decision: "approved" | "rejected") {
     if (!activeSelected) return;
     const response = await reviewRecommendation(activeSelected.id, decision);
-    setLastExecution((response as { action_execution?: Record<string, unknown> }).action_execution ?? null);
+    const execution = (response as { action_execution?: ActionExecution }).action_execution ?? null;
+    setLastExecution(execution);
     const update = (item: Recommendation) => (item.id === activeSelected.id ? { ...item, status: decision } : item);
     setSelected({ ...activeSelected, status: decision });
     setState((current) => ({
@@ -310,6 +590,10 @@ export function FlowDashboard() {
         ...current.memory,
       ],
     }));
+    if (decision === "approved") {
+      setActiveArtifact("email");
+      setActiveView("execution");
+    }
   }
 
   function draftFor(collection: SourceCollection) {
@@ -450,6 +734,17 @@ export function FlowDashboard() {
     setBgvResults((current) => ({ ...current, [candidate.id]: result }));
   }
 
+  async function copyArtifact(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyStatus("Copied");
+      window.setTimeout(() => setCopyStatus(""), 1400);
+    } catch {
+      setCopyStatus("Copy failed");
+      window.setTimeout(() => setCopyStatus(""), 1400);
+    }
+  }
+
   async function sendGuide() {
     const question = guideInput.trim();
     if (!question) return;
@@ -468,21 +763,24 @@ export function FlowDashboard() {
           "Switch Account",
           "Run Planner",
           ...(activeView === "dashboard" ? ["Approve selected action", "Reject selected action"] : []),
+          ...(activeView === "execution" ? ["Approve and generate artifacts", "Copy artifact", "Open Memory Ledger"] : []),
           ...(activeView === "crm" || activeView === "interactions" || activeView === "knowledge" || activeView === "risks" || activeView === "candidates"
             ? ["Load sample", "Save and ingest to memory", "Upload file"]
             : []),
-          ...(activeView === "memory" ? ["Ask Memory"] : []),
+          ...(activeView === "memory" ? ["Open Memory Ledger", "Inspect trust state"] : []),
         ],
         visible_sections:
           activeView === "dashboard"
             ? ["Metrics", "Recommendation Inbox", "Agent Decision Flow", "Risk Trend"]
             : activeView === "memory"
-              ? ["Memory Graph", "Memory Sources", "Memory Cards", "Evidence For Selected Action"]
-              : activeView === "trace"
-                ? ["Agent Trace", "Retrieved Evidence", "Run Summary"]
-                : activeView === "accounts"
-                  ? ["Account Switcher"]
-                  : [sourceLabels[activeView as SourceCollection]?.title ?? viewLabels[activeView], "Add New Entry", "Existing Entries"],
+              ? ["Memory Graph", "Memory Sources", "Memory Ledger", "Memory Cards", "Evidence For Selected Action"]
+              : activeView === "execution"
+                ? ["Approval Execution Studio", "Generated Artifacts", "Execution Timeline", "Memory Writeback"]
+                : activeView === "trace"
+                  ? ["Agent Trace", "Retrieved Evidence", "Run Summary"]
+                  : activeView === "accounts"
+                    ? ["Account Switcher"]
+                    : [sourceLabels[activeView as SourceCollection]?.title ?? viewLabels[activeView], "Add New Entry", "Existing Entries"],
         visible_recommendations: recommendations.slice(0, 5).map((item) => ({
           title: item.title,
           priority: item.priority,
@@ -642,12 +940,194 @@ export function FlowDashboard() {
             Reject
           </button>
         </div>
-        {lastExecution && (
+        {activeExecution && (
           <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-            Approved action queued. Flow360 created an execution draft and wrote the decision to memory.
+            <p className="font-semibold">Execution artifacts are ready.</p>
+            <p className="mt-1">Open Execution Studio to copy the email, CRM task, escalation note, SLA update, or summary.</p>
+            <button
+              onClick={() => setActiveView("execution")}
+              className="mt-3 inline-flex h-8 items-center justify-center rounded-md bg-emerald-700 px-3 text-xs font-semibold text-white hover:bg-emerald-800"
+            >
+              Open Execution Studio
+            </button>
           </div>
         )}
       </section>
+    );
+  }
+
+  function executionStudioView() {
+    if (!activeSelected) {
+      return (
+        <section className="rounded-lg border border-black/10 bg-white p-5 shadow-sm">
+          <h2 className="text-xl font-semibold tracking-normal">Approval Execution Studio</h2>
+          <p className="mt-2 text-sm leading-6 text-black/58">
+            Run the planner or select a recommendation first. Once a recommendation is selected, this screen turns approval into practical
+            artifacts.
+          </p>
+        </section>
+      );
+    }
+
+    const approved = activeSelected.status === "approved" || !!activeExecution;
+    const artifact = artifactFromExecution(activeExecution, activeArtifact) ?? buildArtifactDraft(account, activeSelected, activeArtifact);
+    const evidenceTitles =
+      activeExecution?.metadata?.evidence_titles ??
+      activeSelected.evidence.map((item) => item.source_title).filter(Boolean).slice(0, 4);
+    const nextSteps =
+      activeExecution?.next_steps ??
+      activeExecution?.metadata?.next_steps ?? [
+        `Assign ${activeSelected.owner_role}`,
+        `Complete by ${activeSelected.due_date}`,
+        "Capture the result as reviewed memory",
+      ];
+
+    return (
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+        <section className="rounded-lg border border-black/10 bg-white p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase text-indigo-700">Human-in-the-loop</p>
+              <h2 className="mt-1 text-xl font-semibold tracking-normal">Approval Execution Studio</h2>
+              <p className="mt-2 text-sm leading-6 text-black/58">
+                One approval creates the customer communication, internal task, escalation note, SLA update, and memory writeback.
+              </p>
+            </div>
+            <span className={`rounded-md border px-2 py-1 text-xs font-semibold ${approved ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+              {approved ? "Artifacts ready" : "Awaiting approval"}
+            </span>
+          </div>
+
+          <div className="mt-4 rounded-lg border border-black/10 bg-[#fbfaf8] p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-semibold">{activeSelected.title}</h3>
+              <span className={`rounded-md border px-2 py-1 text-xs font-semibold ${priorityClass[activeSelected.priority]}`}>
+                {activeSelected.priority}
+              </span>
+              <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-black/55 ring-1 ring-black/8">
+                {activeSelected.confidence}% confidence
+              </span>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-black/62">{activeSelected.rationale}</p>
+            <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-1">
+              <div className="rounded-md bg-white px-3 py-2 ring-1 ring-black/8">
+                <span className="text-black/45">Owner</span>
+                <p className="font-semibold">{activeSelected.owner_role}</p>
+              </div>
+              <div className="rounded-md bg-white px-3 py-2 ring-1 ring-black/8">
+                <span className="text-black/45">Due</span>
+                <p className="font-semibold">{activeSelected.due_date}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-2">
+            {[
+              ["1", "Recommendation selected", "A business user chooses the next best action."],
+              ["2", "Evidence checked", evidenceTitles.length ? evidenceTitles[0] : "No evidence linked yet."],
+              ["3", approved ? "Human approval captured" : "Waiting for approval", approved ? "Decision written back to episodic memory." : "Click approve when the recommendation is correct."],
+              ["4", approved ? "Execution artifacts generated" : "Artifact preview prepared", "Email, CRM task, escalation note, SLA update, and summary."],
+            ].map(([number, title, detail]) => (
+              <div key={number} className="grid grid-cols-[30px_1fr] gap-3 rounded-md border border-black/8 bg-white p-3">
+                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-black text-xs font-bold text-white">{number}</span>
+                <div>
+                  <p className="text-sm font-semibold">{title}</p>
+                  <p className="mt-0.5 text-xs leading-5 text-black/52">{detail}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={() => handleReview("approved")}
+              className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-md bg-black text-sm font-semibold text-white hover:bg-black/85"
+            >
+              <Check size={16} />
+              {approved ? "Regenerate" : "Approve & Generate"}
+            </button>
+            <button
+              onClick={() => handleReview("rejected")}
+              className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-md border border-black/10 text-sm font-semibold hover:bg-black/5"
+            >
+              <X size={16} />
+              Reject
+            </button>
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-black/10 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase text-emerald-700">Generated artifacts</p>
+              <h2 className="mt-1 text-xl font-semibold tracking-normal">{artifact.title}</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-black/55">
+                These drafts are generated from the selected recommendation, evidence, owner, and due date. Copy the one you need and send it
+                through the real business system.
+              </p>
+            </div>
+            <button
+              onClick={() => copyArtifact(artifact.body)}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-black/10 px-3 text-sm font-semibold hover:bg-black/5"
+            >
+              <ClipboardList size={15} />
+              {copyStatus || "Copy"}
+            </button>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {artifactTabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveArtifact(tab.key)}
+                  className={`inline-flex h-9 items-center gap-2 rounded-full border px-3 text-sm font-semibold transition ${
+                    activeArtifact === tab.key
+                      ? "border-black bg-black text-white"
+                      : "border-black/10 bg-[#fbfaf8] text-black/68 hover:bg-black/5"
+                  }`}
+                >
+                  <Icon size={15} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 rounded-lg border border-black/10 bg-[#fbfaf8]">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-black/10 px-4 py-3">
+              <p className="text-sm font-semibold">{approved ? "Ready after approval" : "Preview before approval"}</p>
+              <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-black/50 ring-1 ring-black/8">
+                {activeSelected.owner_role} - {activeSelected.due_date}
+              </span>
+            </div>
+            <pre className="whitespace-pre-wrap p-4 font-sans text-sm leading-6 text-black/72">{artifact.body}</pre>
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_0.85fr]">
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
+              <p className="text-sm font-semibold text-emerald-900">Memory writeback</p>
+              <p className="mt-2 text-sm leading-6 text-emerald-800">
+                {approved
+                  ? "This approval is stored as episodic memory, so future recommendations can learn from the human decision."
+                  : "Approval will create episodic memory and mark these artifacts as reviewed output."}
+              </p>
+            </div>
+            <div className="rounded-lg border border-black/10 bg-white p-3">
+              <p className="text-sm font-semibold">Next steps</p>
+              <ul className="mt-2 space-y-1 text-sm leading-6 text-black/60">
+                {nextSteps.map((step) => (
+                  <li key={step} className="flex gap-2">
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-black" />
+                    <span>{step}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+      </div>
     );
   }
 
@@ -1022,8 +1502,11 @@ export function FlowDashboard() {
       { left: "82%", top: "76%" },
       { left: "50%", top: "84%" },
     ];
+    const ledgerItems = buildMemoryLedgerItems(displayMemory, sources, account);
+    const selectedLedger = ledgerItems.find((item) => item.id === selectedLedgerId) ?? ledgerItems[0];
+    const trustedCount = ledgerItems.filter((item) => item.state === "fresh" || item.state === "approved").length;
     return (
-      <div className="space-y-3">
+      <div className="grid min-h-[calc(100vh-128px)] grid-rows-[auto_auto_minmax(300px,1fr)] gap-3">
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
           <section className="rounded-lg border border-black/10 bg-white p-3 shadow-sm">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1035,7 +1518,7 @@ export function FlowDashboard() {
             </div>
 
             <div
-              className="relative mt-3 min-h-[430px] overflow-hidden rounded-lg border border-white/10 bg-[#101319] text-white"
+              className="relative mt-3 h-[360px] overflow-hidden rounded-lg border border-white/10 bg-[#101319] text-white"
               style={{
                 backgroundImage:
                   "linear-gradient(rgba(255,255,255,0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.055) 1px, transparent 1px), radial-gradient(circle at 50% 42%, rgba(45,212,191,0.22), transparent 34%), radial-gradient(circle at 20% 20%, rgba(99,102,241,0.18), transparent 28%)",
@@ -1107,13 +1590,96 @@ export function FlowDashboard() {
           </section>
         </div>
 
-        <div className="grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
           <section className="rounded-lg border border-black/10 bg-white p-3 shadow-sm">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <BadgeCheck size={18} className="text-indigo-600" />
+                <h2 className="text-lg font-semibold tracking-normal">Memory Ledger</h2>
+              </div>
+              <span className="rounded-md border border-indigo-100 bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">
+                {trustedCount} trusted items
+              </span>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-black/55">
+              Audits memory before it influences a recommendation: fresh, stale, contradicted, human-approved, or AI-inferred.
+            </p>
+
+            <div className="mt-3 overflow-x-auto rounded-lg border border-black/10">
+              <div className="min-w-[740px]">
+                <div className="grid grid-cols-[1.35fr_0.75fr_0.75fr_0.7fr] bg-[#f7f6f3] px-3 py-2 text-xs font-semibold uppercase text-black/45">
+                  <span>Memory</span>
+                  <span>Trust state</span>
+                  <span>Origin</span>
+                  <span>Planner use</span>
+                </div>
+                {ledgerItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setSelectedLedgerId(item.id)}
+                    className={`grid w-full grid-cols-[1.35fr_0.75fr_0.75fr_0.7fr] items-center gap-2 border-t border-black/8 px-3 py-3 text-left text-sm transition ${
+                      selectedLedger?.id === item.id ? "bg-indigo-50/70" : "bg-white hover:bg-black/[0.025]"
+                    }`}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-semibold">{item.title}</span>
+                      <span className="mt-1 block truncate text-xs text-black/45">{item.source}</span>
+                    </span>
+                    <span className={`w-fit rounded-md border px-2 py-1 text-xs font-semibold ${ledgerStateStyle[item.state]}`}>
+                      {item.stateLabel}
+                    </span>
+                    <span className="truncate text-black/58">{item.origin}</span>
+                    <span className="truncate text-black/58">{item.plannerUse}</span>
+                  </button>
+                ))}
+              </div>
+              {!ledgerItems.length && (
+                <div className="bg-white p-4 text-sm text-black/55">No memory yet. Add source data or run the planner.</div>
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-black/10 bg-white p-3 shadow-sm">
+            {selectedLedger ? (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-black/42">Planner trust decision</p>
+                    <h2 className="mt-1 text-lg font-semibold tracking-normal">{selectedLedger.title}</h2>
+                    <p className="mt-1 text-sm text-black/48">{selectedLedger.trust}% trust</p>
+                  </div>
+                  <span className={`rounded-md border px-2 py-1 text-xs font-semibold ${ledgerStateStyle[selectedLedger.state]}`}>
+                    {selectedLedger.stateLabel}
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  <div className="rounded-md bg-[#f7f6f3] p-3">
+                    <p className="text-xs font-semibold uppercase text-black/42">Why it matters</p>
+                    <p className="mt-2 text-sm leading-6 text-black/65">{selectedLedger.why}</p>
+                  </div>
+                  <div className="rounded-md bg-[#f7f6f3] p-3">
+                    <p className="text-xs font-semibold uppercase text-black/42">Evidence chain</p>
+                    <p className="mt-2 text-sm leading-6 text-black/65">{selectedLedger.evidence}</p>
+                  </div>
+                  <div className="rounded-md bg-[#f7f6f3] p-3">
+                    <p className="text-xs font-semibold uppercase text-black/42">Planner rule</p>
+                    <p className="mt-2 text-sm leading-6 text-black/65">{selectedLedger.rule}</p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="rounded-md bg-[#f7f6f3] p-4 text-sm text-black/55">Select a memory item to inspect its planner rule.</div>
+            )}
+          </section>
+        </div>
+
+        <div className="grid min-h-0 gap-3 xl:grid-cols-[0.9fr_1.1fr]">
+          <section className="flex min-h-0 flex-col rounded-lg border border-black/10 bg-white p-3 shadow-sm">
             <div className="flex items-center gap-2">
               <Database size={18} className="text-emerald-600" />
               <h2 className="text-lg font-semibold tracking-normal">Memory Cards</h2>
             </div>
-            <div className="mt-3 grid max-h-[430px] gap-2 overflow-y-auto pr-1">
+            <div className="mt-3 grid min-h-0 flex-1 content-start gap-2 overflow-y-auto pr-1">
               {displayMemory.map((item) => (
                 <article key={item.id} className="rounded-md bg-[#f7f6f3] p-3">
                   <div className="flex items-center justify-between gap-2">
@@ -1128,12 +1694,12 @@ export function FlowDashboard() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-black/10 bg-white p-3 shadow-sm">
+          <section className="flex min-h-0 flex-col rounded-lg border border-black/10 bg-white p-3 shadow-sm">
             <div className="flex items-center gap-2">
               <BadgeCheck size={18} className="text-amber-600" />
               <h2 className="text-lg font-semibold tracking-normal">Evidence For Selected Action</h2>
             </div>
-            <div className="mt-3 grid gap-2">
+            <div className="mt-3 grid min-h-0 flex-1 content-start gap-2 overflow-y-auto pr-1">
               {(activeSelected?.evidence.length ? activeSelected.evidence : []).map((item) => (
                 <article key={`${item.source_id}-${item.snippet}`} className="rounded-md border border-black/10 bg-[#fbfaf8] p-3">
                   <p className="text-sm font-semibold">{item.source_title}</p>
@@ -1288,6 +1854,7 @@ export function FlowDashboard() {
     if (activeView === "risks") return sourcePage("risks");
     if (activeView === "candidates" && account.supports_candidates) return candidatesView();
     if (activeView === "memory") return memoryView();
+    if (activeView === "execution") return executionStudioView();
     return traceView();
   }
 
@@ -1377,8 +1944,8 @@ export function FlowDashboard() {
             </div>
           </div>
 
-          <div className="min-h-[calc(100vh-92px)]">
-            <div className="min-w-0 p-3 pb-20">{activeContent()}</div>
+          <div className={activeView === "memory" ? "" : "min-h-[calc(100vh-92px)]"}>
+            <div className={`min-w-0 p-3 ${activeView === "memory" ? "pb-6" : "pb-20"}`}>{activeContent()}</div>
           </div>
         </main>
       </div>
