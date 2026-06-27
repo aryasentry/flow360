@@ -35,6 +35,8 @@ Flow360 simulates enterprise integrations through internal source pages:
 
 Each tab supports structured entry. Relevant tabs also support file upload. Saving or uploading creates memory immediately.
 
+Each source tab also includes pending import samples. They are intentionally not counted as memory until the user loads the sample and saves it, which makes the ingestion loop visible during the demo.
+
 ## 4. Agentic Workflow
 
 Implemented in `backend/app/agents/workflow.py`.

@@ -32,6 +32,10 @@ The MVP demonstrates one reusable platform across three fictional Indian B2B acc
 
 The frontend includes simulated source-system pages for CRM, meetings/mails, knowledge base, risks/incidents, and candidates/BGV. These pages behave like internal connectors: when a user adds a new entry or uploads a document, the backend ingests it into Flow360 memory.
 
+Each account also has a pending import queue inside its source pages. These records are intentionally visible but not yet memory; the user can load one into the form and save it during the demo to show live ingestion.
+
+The `data/mock_docs/` folder contains long-form formal mock artifacts: account plans, meeting transcripts, credentialing SOPs, rate-card policies, escalation playbooks, renewal-risk registers, RCA reports, incident reviews, dispatch notes, and candidate shortlist CSVs. These are written to resemble enterprise operating documents rather than short sample paragraphs.
+
 ## Core Features
 
 - Premium SaaS landing page with a dark cinematic Flow360 hero
@@ -42,6 +46,7 @@ The frontend includes simulated source-system pages for CRM, meetings/mails, kno
 - Knowledge base tab for policies, playbooks, checklists, and rate cards
 - Risks and incidents tab for SLA breaches, RCA notes, and renewal risks
 - Candidates/BGV tab for individual credentialing decisions when applicable
+- Pending import samples on each source page, separate from already-ingested memory
 - Collapsible sidebar with icon+label and icon-only mode
 - Right-side FlowGuide assistant that sees the current screen, memory, and evidence
 - Planner-driven agent workflow using LangGraph
@@ -337,7 +342,8 @@ Use this flow for the hackathon video:
 7. Click `Run Planner`.
 8. Open a top recommendation and explain confidence, rationale, owner, due date, and evidence.
 9. Approve or reject the action and show that approval creates a queued execution draft plus memory.
-10. Use FlowGuide on the right side to ask what to click next or why the recommendation matters.
+10. Open any source page, load a pending import sample, save it, and show it appearing in source history and memory.
+11. Use FlowGuide on the right side to ask what to click next or why the recommendation matters.
 
 ## Backend Endpoints
 

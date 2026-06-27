@@ -191,10 +191,10 @@ export async function guideChat(payload: {
       body: JSON.stringify(payload),
     });
   } catch {
+    const screen = String(payload.visible_context.current_screen || payload.current_view || "this screen");
     return {
-      answer:
-        "I can see this account workspace. Start by checking the highest-risk recommendation, then open the evidence and source tabs that created it. If you add a new CRM note, meeting note, policy, or incident, run the planner again.",
-      suggestions: ["Open top action", "Check evidence", "Run Planner"],
+      answer: `You are on ${screen}. Use only the visible sidebar pages and buttons on this screen. Add or upload source data first; click Run Planner only when you want fresh recommendations from the current memory.`,
+      suggestions: ["Save and ingest to memory", "Run Planner", "Open Memory"],
       confidence: 76,
       mode: "demo-fallback",
     };

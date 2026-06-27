@@ -227,15 +227,15 @@ def _answer_guide_query(
         f"- {item.source_title} [{item.source_type}]: {item.snippet}" for item in evidence[:6]
     )
     visible_context = payload.visible_context or {}
-    suggestions = [
-        "Run Planner",
-        "Open evidence",
-        "Check missing data",
-    ]
-    fallback = (
-        f"You are viewing {account.name}. Start with the highest-risk card, then open the evidence for the top recommendation. "
-        "If you added new CRM, meeting, policy, or incident data, run the planner again so memory and recommendations refresh."
+    suggestions = _guide_suggestions(payload.current_view)
+    fallback = _screen_grounded_guide(payload, account.name, visible_context) or (
+        f"You are viewing {account.name}. Use the visible navigation and buttons on this screen. "
+        "If you add CRM, meeting, policy, candidate, or incident data, it is stored as memory first; click Run Planner only when you want fresh recommendations."
     )
+
+    deterministic = _screen_grounded_guide(payload, account.name, visible_context)
+    if deterministic:
+        return deterministic, suggestions, 84, "demo-fallback"
 
     if not llm.enabled:
         return fallback, suggestions, 76, "demo-fallback"
@@ -244,7 +244,9 @@ def _answer_guide_query(
     system = (
         "You are FlowGuide, an in-app assistant for Flow360. "
         "Guide the user through the current screen and explain business terms simply. "
-        "You can use visible UI context, persistent memory, and evidence. "
+        "The Visible UI context is the only source of truth for navigation, tabs, sections, button names, and what the user can click. "
+        "Persistent memory and evidence may explain business context, but they must never override the visible UI. "
+        "Do not invent tabs, panels, buttons, or labels. If something is not in Visible UI context, say it is not on this screen. "
         "Be concise, practical, and never mention model providers."
     )
     user = f"""Account:
@@ -268,12 +270,90 @@ Chat history:
 User question:
 {payload.question}
 
-Answer in 2-5 short bullets or sentences. Then include 2-3 suggested next clicks as plain text."""
-    result = llm.complete(system=system, user=user, model=settings.groq_fast_model, temperature=0.15, max_tokens=700)
+Answer in 2-4 short sentences. Use exact labels from Visible UI context for next clicks."""
+    result = llm.complete(system=system, user=user, model=settings.groq_fast_model, temperature=0.05, max_tokens=420)
     if not result or not result.content.strip():
         return fallback, suggestions, 76, "demo-fallback"
 
     return result.content.strip(), suggestions, 86 if memories or evidence else 78, "live"
+
+
+def _guide_suggestions(current_view: str) -> list[str]:
+    by_view = {
+        "accounts": ["Switch Account", "Open Dashboard", "Run Planner"],
+        "dashboard": ["Review selected action", "Check evidence", "Run Planner"],
+        "crm": ["Load sample", "Save and ingest to memory", "Run Planner"],
+        "interactions": ["Load sample", "Save and ingest to memory", "Run Planner"],
+        "knowledge": ["Load sample", "Save and ingest to memory", "Run Planner"],
+        "risks": ["Load sample", "Save and ingest to memory", "Run Planner"],
+        "candidates": ["Run BGV", "Save and ingest to memory", "Run Planner"],
+        "memory": ["Read Memory Graph", "Ask Memory", "Open source tabs"],
+        "trace": ["Run Planner", "Review agent trace", "Check retrieved evidence"],
+    }
+    return by_view.get(current_view, ["Run Planner", "Open Dashboard", "Ask FlowGuide"])
+
+
+def _screen_grounded_guide(payload: GuideChatRequest, account_name: str, visible_context: dict) -> str | None:
+    question = payload.question.lower()
+    screen_question = any(
+        phrase in question
+        for phrase in [
+            "what should i do",
+            "what do i do",
+            "what to do",
+            "next on this",
+            "on this page",
+            "on this screen",
+            "this page",
+            "this screen",
+            "where should i click",
+            "how to use this",
+        ]
+    )
+    if not screen_question:
+        return None
+
+    screen = visible_context.get("current_screen") or payload.current_view
+    source_counts = visible_context.get("source_counts") or {}
+    selected = visible_context.get("selected_recommendation") or {}
+    selected_title = selected.get("title") if isinstance(selected, dict) else None
+    recommendations = visible_context.get("visible_recommendations") or []
+    top_title = selected_title
+    if not top_title and recommendations and isinstance(recommendations[0], dict):
+        top_title = recommendations[0].get("title")
+
+    if payload.current_view == "dashboard":
+        first = f"You are on the Dashboard for {account_name}."
+        if top_title:
+            first += f" Start by reviewing the selected recommendation: {top_title}."
+        return (
+            f"{first} Check the Recommendation Inbox, read the Evidence For Selected Action panel, then approve or reject only after the evidence matches the business risk. "
+            "Use Run Planner after you add new CRM, Meetings & Mail, Knowledge, Risks, or Candidates/BGV data."
+        )
+    if payload.current_view in {"crm", "interactions", "knowledge", "risks", "candidates"}:
+        count = source_counts.get(payload.current_view, 0) if isinstance(source_counts, dict) else 0
+        return (
+            f"You are on {screen}. This page is for adding or reviewing source data; it currently has {count} connected entries. "
+            "Use Load sample or paste a real-looking entry, then click Save and ingest to memory. "
+            "Nothing becomes a new plan until you click Run Planner."
+        )
+    if payload.current_view == "memory":
+        total = sum(int(value) for value in source_counts.values()) if isinstance(source_counts, dict) else 0
+        return (
+            f"You are on Memory for {account_name}. Use the Memory Graph to see how CRM, Meetings & Mail, Knowledge, Risks, and Candidates/BGV connect to the account. "
+            f"There are {total} visible source entries. Ask Memory is for questions about stored context, not for creating new recommendations."
+        )
+    if payload.current_view == "trace":
+        return (
+            "You are on Trace. Use this screen after Run Planner to explain how the planner routed ingestion, retrieval, analysis, recommendation, review, and memory updates. "
+            "If the trace is empty, go back to Dashboard and click Run Planner."
+        )
+    if payload.current_view == "accounts":
+        return (
+            "You are on Accounts. Pick one client account first; each account reuses the same backend workflow but loads different CRM, meeting, knowledge, risk, and memory context. "
+            "After choosing an account, open Dashboard or a source tab."
+        )
+    return None
 
 
 def _extract_text(filename: str, content: bytes) -> str:

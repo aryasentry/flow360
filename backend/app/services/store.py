@@ -4,6 +4,7 @@ import math
 import re
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from app.config import Settings
@@ -56,8 +57,9 @@ class PlatformStore:
             self._accounts[account["id"]] = account
 
     def seed_demo_sources(self) -> None:
-        for entry in DEMO_SOURCE_ENTRIES:
+        for entry in [*DEMO_SOURCE_ENTRIES, *self._mock_file_source_entries()]:
             self._source_entries[entry["id"]] = entry
+            self._write_source_memory(entry)
 
     def seed_demo_candidates(self) -> None:
         for candidate in DEMO_CANDIDATES:
@@ -70,7 +72,7 @@ class PlatformStore:
     def seed_demo_documents(self) -> None:
         if self._documents:
             return
-        for doc in DEMO_DOCS:
+        for doc in [*DEMO_DOCS, *self._mock_file_documents()]:
             self._documents.append(doc)
             for position, chunk in enumerate(chunk_text(doc["content"])):
                 self._chunks.append(
@@ -130,7 +132,7 @@ class PlatformStore:
         )
 
     def list_source_entries(self, account_id: str, collection: str | None = None) -> list[SourceEntry]:
-        entries = list(self._source_entries.values())
+        entries_by_id = {entry["id"]: entry for entry in self._source_entries.values()}
         if self.client:
             try:
                 query = self.client.table("source_entries").select("*").eq("account_id", account_id).order("created_at", desc=True)
@@ -138,9 +140,11 @@ class PlatformStore:
                     query = query.eq("collection", collection)
                 response = query.execute()
                 if response.data:
-                    entries = response.data
+                    for row in response.data:
+                        entries_by_id[row["id"]] = row
             except Exception:
                 pass
+        entries = list(entries_by_id.values())
         filtered = [
             entry
             for entry in entries
@@ -183,8 +187,8 @@ class PlatformStore:
                 "bgv_status": fields.get("bgv_status", "not_started"),
                 "fit_score": int(fields.get("fit_score", 70) or 70),
                 "rate_variance_percent": float(fields.get("rate_variance_percent", 0) or 0),
-                "missing_items": fields.get("missing_items", []),
-                "risk_flags": fields.get("risk_flags", []),
+                "missing_items": self._as_list(fields.get("missing_items", [])),
+                "risk_flags": self._as_list(fields.get("risk_flags", [])),
                 "metadata": fields,
             }
 
@@ -223,8 +227,8 @@ class PlatformStore:
                             "chunk_index": position,
                             "content": chunk,
                             "embedding": self.embeddings.embed(chunk),
-            "metadata": {"title": title, "source_type": source_type},
-        }
+                            "metadata": {"title": title, "source_type": source_type},
+                        }
                     )
                 if rows:
                     self.client.table("document_chunks").upsert(rows).execute()
@@ -249,11 +253,100 @@ class PlatformStore:
 
     def ingest_demo_documents(self) -> list[IngestResponse]:
         responses = []
-        for doc in DEMO_DOCS:
+        for doc in [*DEMO_DOCS, *self._mock_file_documents()]:
             responses.append(self.ingest_text(doc["account_id"], doc["title"], doc["content"], doc["source_type"]))
         return responses
 
+    def _mock_file_documents(self) -> list[dict[str, Any]]:
+        root = Path(__file__).resolve().parents[3] / "data" / "mock_docs"
+        if not root.exists():
+            return []
+        documents: list[dict[str, Any]] = []
+        for path in sorted(root.iterdir()):
+            if path.suffix.lower() not in {".md", ".csv", ".txt"}:
+                continue
+            content = path.read_text(encoding="utf-8", errors="ignore").strip()
+            if not content:
+                continue
+            account_id = "acct-aarogya-health"
+            if "navapay" in path.name.lower():
+                account_id = "acct-navapay-fintech"
+            elif "prithvigrid" in path.name.lower():
+                account_id = "acct-prithvigrid-energy"
+
+            source_type = "mock_enterprise_document"
+            name = path.name.lower()
+            if "candidate" in name or "shortlist" in name:
+                source_type = "candidate_shortlist"
+            elif "competitor" in name:
+                source_type = "competitor_intelligence"
+            elif "credential" in name or "checklist" in name:
+                source_type = "credentialing_checklist"
+            elif "playbook" in name:
+                source_type = "playbook"
+            elif "runbook" in name:
+                source_type = "technical_runbook"
+            elif "rate" in name:
+                source_type = "rate_card_policy"
+            elif "policy" in name or "guarantee" in name:
+                source_type = "company_policy"
+            elif "rca" in name or "incident" in name or "sla" in name:
+                source_type = "root_cause_analysis"
+            elif "renewal" in name:
+                source_type = "renewal_risk_note"
+            elif "crm" in name or "stakeholder" in name:
+                source_type = "crm_context"
+            elif "dispatch" in name:
+                source_type = "field_dispatch_note"
+            elif any(token in name for token in ["meeting", "qbr", "email", "notes", "huddle", "workshop", "war_room"]):
+                source_type = "customer_interaction"
+
+            documents.append(
+                {
+                    "id": f"mock-{path.stem}",
+                    "title": path.stem.replace("_", " ").replace("-", " ").title(),
+                    "source_type": source_type,
+                    "account_id": account_id,
+                    "content": content,
+                    "metadata": {"file_name": path.name, "mock_doc": True},
+                }
+            )
+        return documents
+
+    def _mock_file_source_entries(self) -> list[dict[str, Any]]:
+        entries: list[dict[str, Any]] = []
+        for doc in self._mock_file_documents():
+            source_type = doc["source_type"]
+            collection = "knowledge"
+            if source_type in {"crm_context", "competitor_intelligence"}:
+                collection = "crm"
+            elif source_type in {"customer_interaction", "field_dispatch_note"}:
+                collection = "interactions"
+            elif source_type in {"root_cause_analysis", "renewal_risk_note"}:
+                collection = "risks"
+            elif source_type == "candidate_shortlist":
+                collection = "candidates"
+
+            entries.append(
+                {
+                    "id": f"src-{doc['id']}",
+                    "account_id": doc["account_id"],
+                    "collection": collection,
+                    "source_type": source_type,
+                    "title": doc["title"],
+                    "content": doc["content"],
+                    "fields": {
+                        "file_name": doc.get("metadata", {}).get("file_name", ""),
+                        "origin": "formal_mock_document",
+                    },
+                    "created_at": datetime.utcnow().isoformat(),
+                }
+            )
+        return entries
+
     def retrieve_context(self, query: str, account_id: str = DEMO_ACCOUNT_ID, top_k: int = 8) -> list[Evidence]:
+        evidence: list[Evidence] = []
+        seen_sources: set[str] = set()
         if self.client:
             try:
                 query_embedding = self.embeddings.embed(query)
@@ -267,20 +360,24 @@ class PlatformStore:
                 ).execute()
                 data = response.data or []
                 if data:
-                    return [
-                        Evidence(
+                    for row in data:
+                        item = Evidence(
                             source_id=row.get("document_id", row.get("id", "")),
                             source_title=row.get("title") or row.get("metadata", {}).get("title", "Enterprise context"),
                             source_type=row.get("source_type") or row.get("metadata", {}).get("source_type", "knowledge"),
                             snippet=row.get("content", "")[:500],
                             relevance=float(row.get("similarity", 0.0)),
                         )
-                        for row in data
-                    ]
+                        evidence.append(item)
+                        seen_sources.add(item.source_id)
             except Exception:
                 pass
 
-        return self._keyword_search(query, account_id, top_k)
+        for item in self._keyword_search(query, account_id, top_k):
+            if item.source_id not in seen_sources:
+                evidence.append(item)
+                seen_sources.add(item.source_id)
+        return evidence[:top_k]
 
     def _keyword_search(self, query: str, account_id: str, top_k: int) -> list[Evidence]:
         query_terms = set(re.findall(r"[a-zA-Z0-9]+", query.lower()))
@@ -469,6 +566,11 @@ class PlatformStore:
         return execution
 
     def get_memory(self, entity_type: str, entity_id: str) -> list[MemoryCard]:
+        cards_by_id = {
+            card["id"]: card
+            for card in self._memory_cards.values()
+            if card["entity_type"] == entity_type and card["entity_id"] == entity_id
+        }
         if self.client:
             try:
                 response = (
@@ -480,25 +582,36 @@ class PlatformStore:
                     .execute()
                 )
                 if response.data:
-                    return [MemoryCard(**item) for item in response.data]
+                    for item in response.data:
+                        cards_by_id[item["id"]] = item
             except Exception:
                 pass
         return [
             MemoryCard(**card)
-            for card in self._memory_cards.values()
-            if card["entity_type"] == entity_type and card["entity_id"] == entity_id
+            for card in sorted(cards_by_id.values(), key=lambda item: item.get("updated_at", ""), reverse=True)
         ]
 
     def list_candidates(self, account_id: str) -> list[CandidateProfile]:
-        candidates = [candidate for candidate in self._candidates.values() if candidate["account_id"] == account_id]
+        candidates_by_id = {
+            candidate["id"]: candidate for candidate in self._candidates.values() if candidate["account_id"] == account_id
+        }
         if self.client:
             try:
                 response = self.client.table("candidates").select("*").eq("account_id", account_id).order("name").execute()
                 if response.data:
-                    candidates = response.data
+                    for row in response.data:
+                        candidates_by_id[row["id"]] = row
             except Exception:
                 pass
-        return [self._candidate_from_row(candidate) for candidate in candidates]
+        return [self._candidate_from_row(candidate) for candidate in candidates_by_id.values()]
+
+    @staticmethod
+    def _as_list(value: Any) -> list[str]:
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if value is None:
+            return []
+        return [item.strip() for item in str(value).split(",") if item.strip()]
 
     @staticmethod
     def _candidate_from_row(row: dict[str, Any]) -> CandidateProfile:

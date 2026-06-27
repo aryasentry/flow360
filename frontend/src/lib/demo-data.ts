@@ -1,4 +1,16 @@
-import type { AccountSummary, AgentRunResult, CandidateProfile, DashboardState, Recommendation, SourceEntry } from "./types";
+import type {
+  AccountSummary,
+  AgentRunResult,
+  CandidateProfile,
+  DashboardState,
+  Recommendation,
+  SourceCollection,
+  SourceEntry,
+} from "./types";
+
+export type PendingSourceSample = SourceEntry & {
+  ingest_hint: string;
+};
 
 export const fallbackAccounts: AccountSummary[] = [
   {
@@ -286,6 +298,266 @@ export const fallbackSources: Record<string, Record<SourceEntry["collection"], S
       },
     ],
     candidates: [],
+  },
+};
+
+export const pendingSourceSamples: Record<string, Partial<Record<SourceCollection, PendingSourceSample[]>>> = {
+  "acct-aarogya-health": {
+    crm: [
+      {
+        id: "pending-aarogya-crm-night-shift",
+        account_id: "acct-aarogya-health",
+        collection: "crm",
+        source_type: "crm_update",
+        title: "CRM Update - Hyderabad Night Shift Constraint",
+        fields: {
+          client_owner: "Kavya Raman",
+          decision_maker: "Siddharth Menon",
+          renewal_date: "2026-08-31",
+          contract_value: "INR 15.2 Cr",
+        },
+        content:
+          "Siddharth Menon added a new constraint for Hyderabad ICU starts: candidates must confirm night-shift availability before shortlist acceptance. Kavya Raman asked Flow360 to mark candidates without night-shift confirmation as conditional.",
+        created_at: "2026-06-27T09:05:00.000Z",
+        ingest_hint: "Use this to show a CRM update becoming profile memory.",
+      },
+    ],
+    interactions: [
+      {
+        id: "pending-aarogya-mail-shortlist",
+        account_id: "acct-aarogya-health",
+        collection: "interactions",
+        source_type: "email_thread",
+        title: "Email - Backup Shortlist Request From Kavya",
+        fields: {
+          interaction_type: "email",
+          participants: "Kavya Raman, Ananya Suresh",
+          date: "2026-06-27",
+          owner: "Ananya Suresh",
+        },
+        content:
+          "Kavya Raman asked for two backup ICU nurses in the 4 PM shortlist because the hospital board wants contingency coverage. She said the backup names can be lower fit if their license and BGV are already verified.",
+        created_at: "2026-06-27T09:30:00.000Z",
+        ingest_hint: "Use this before running the planner to change the recommended shortlist action.",
+      },
+    ],
+    knowledge: [
+      {
+        id: "pending-aarogya-knowledge-onsite",
+        account_id: "acct-aarogya-health",
+        collection: "knowledge",
+        source_type: "facility_onboarding_rule",
+        title: "Facility Onboarding Rule - ICU Night Shift",
+        fields: {
+          policy_owner: "Meera Nair",
+          applies_to: "ICU nurse starts",
+          rule_type: "facility onboarding",
+          severity: "high",
+        },
+        content:
+          "For Aarogya ICU night-shift starts, the staffing team must collect shift consent, state license verification, BGV completion, immunization attestation, and facility orientation confirmation before the candidate can be marked ready.",
+        created_at: "2026-06-27T09:40:00.000Z",
+        ingest_hint: "Use this to show rule memory influencing BGV and shortlist recommendations.",
+      },
+    ],
+    risks: [
+      {
+        id: "pending-aarogya-risk-conditional-label",
+        account_id: "acct-aarogya-health",
+        collection: "risks",
+        source_type: "near_miss",
+        title: "Near Miss - Conditional Candidate Label Missing",
+        fields: {
+          severity: "medium",
+          root_cause: "conditional status not visible",
+          impact: "client confusion during shortlist review",
+          owner: "Meera Nair",
+        },
+        content:
+          "A previous Aarogya shortlist included a candidate whose license was pending, but the conditional label was not visible in the client-facing note. Kavya Raman said future shortlists must separate verified, conditional, and backup candidates.",
+        created_at: "2026-06-27T09:50:00.000Z",
+        ingest_hint: "Use this to show past mistakes updating episodic memory.",
+      },
+    ],
+    candidates: [
+      {
+        id: "pending-aarogya-candidate-nikhil-bhat",
+        account_id: "acct-aarogya-health",
+        collection: "candidates",
+        source_type: "candidate_profile",
+        title: "Candidate Profile - Nikhil Bhat",
+        fields: {
+          name: "Nikhil Bhat",
+          role: "ICU Nurse",
+          credentialing_status: "fully verified",
+          bgv_status: "verified",
+          fit_score: "87",
+          rate_variance_percent: "5",
+          missing_items: "",
+          risk_flags: "night-shift confirmation pending",
+        },
+        content:
+          "Nikhil Bhat is an ICU Nurse in Hyderabad with 6 years of critical-care experience. License verification and BGV are complete. Fit score is 87. Rate variance is 5 percent. Only night-shift confirmation is pending.",
+        created_at: "2026-06-27T10:05:00.000Z",
+        ingest_hint: "Use this to show a new candidate entering memory before BGV review.",
+      },
+    ],
+  },
+  "acct-navapay-fintech": {
+    crm: [
+      {
+        id: "pending-navapay-crm-procurement",
+        account_id: "acct-navapay-fintech",
+        collection: "crm",
+        source_type: "crm_update",
+        title: "CRM Update - Procurement Added To Renewal Call",
+        fields: {
+          client_owner: "Suhani Bansal",
+          decision_maker: "Manav Chawla",
+          renewal_date: "2026-09-20",
+          contract_value: "INR 9.6 Cr",
+        },
+        content:
+          "Manav Chawla from procurement joined the renewal process and asked for pricing benchmarks. Suhani Bansal warned that procurement will push for downgrade unless the reliability plan is accepted first.",
+        created_at: "2026-06-27T10:10:00.000Z",
+        ingest_hint: "Use this to show commercial CRM context changing renewal risk.",
+      },
+    ],
+    interactions: [
+      {
+        id: "pending-navapay-support-call",
+        account_id: "acct-navapay-fintech",
+        collection: "interactions",
+        source_type: "support_call_transcript",
+        title: "Support Call - Settlement Retry Concern",
+        fields: {
+          interaction_type: "support call",
+          participants: "Vikram Sethi, Ira Joshi",
+          date: "2026-06-27",
+          owner: "Ira Joshi",
+        },
+        content:
+          "Vikram Sethi said webhook retries appear to increase exactly when reconciliation lag increases. He wants product engineering to confirm whether retry storms and queue saturation are connected before the steering committee.",
+        created_at: "2026-06-27T10:20:00.000Z",
+        ingest_hint: "Use this before running the planner to strengthen the technical RCA recommendation.",
+      },
+    ],
+    knowledge: [
+      {
+        id: "pending-navapay-knowledge-webhook",
+        account_id: "acct-navapay-fintech",
+        collection: "knowledge",
+        source_type: "technical_runbook",
+        title: "Webhook Retry Runbook",
+        fields: {
+          policy_owner: "Platform Engineering",
+          applies_to: "payments API",
+          rule_type: "incident prevention",
+          severity: "critical",
+        },
+        content:
+          "When webhook retries exceed threshold during settlement windows, the incident commander must inspect queue depth, retry backoff configuration, and reconciliation lag within 15 minutes. Customer updates should avoid blaming banks until internal queue health is verified.",
+        created_at: "2026-06-27T10:25:00.000Z",
+        ingest_hint: "Use this to show product runbooks becoming rule memory.",
+      },
+    ],
+    risks: [
+      {
+        id: "pending-navapay-risk-adoption",
+        account_id: "acct-navapay-fintech",
+        collection: "risks",
+        source_type: "adoption_risk",
+        title: "Adoption Risk - Chennai Reconciliation Team",
+        fields: {
+          severity: "medium",
+          root_cause: "exception categories do not match workflow",
+          impact: "low module adoption",
+          owner: "Aditi Prakash",
+        },
+        content:
+          "The Chennai operations team closes exceptions outside the reconciliation module because internal categories do not match their daily workflow. Aditi Prakash asked for a workflow lab using real failed settlement cases.",
+        created_at: "2026-06-27T10:35:00.000Z",
+        ingest_hint: "Use this to show non-technical risk affecting the next best action.",
+      },
+    ],
+  },
+  "acct-prithvigrid-energy": {
+    crm: [
+      {
+        id: "pending-prithvigrid-crm-hospital-feeder",
+        account_id: "acct-prithvigrid-energy",
+        collection: "crm",
+        source_type: "crm_asset_update",
+        title: "CRM Asset Update - Nashik Hospital Feeder",
+        fields: {
+          client_owner: "Harish Nambiar",
+          decision_maker: "Ishita Rao",
+          renewal_date: "2026-10-15",
+          contract_value: "INR 22.4 Cr",
+        },
+        content:
+          "Harish Nambiar reclassified Nashik hospital feeder HF-12 as critical because it supports two emergency wards. ETA updates must be sent every two hours during open outages.",
+        created_at: "2026-06-27T10:45:00.000Z",
+        ingest_hint: "Use this to show CRM asset data entering operational memory.",
+      },
+    ],
+    interactions: [
+      {
+        id: "pending-prithvigrid-field-whatsapp",
+        account_id: "acct-prithvigrid-energy",
+        collection: "interactions",
+        source_type: "field_message",
+        title: "Field Message - Backup Crew Needed",
+        fields: {
+          interaction_type: "field message",
+          participants: "Harish Nambiar, Raghav Bendre",
+          date: "2026-06-27",
+          owner: "Raghav Bendre",
+        },
+        content:
+          "Raghav Bendre messaged that the preferred Nashik crew is stuck near Igatpuri due to rain. Harish asked whether a certified backup crew from Pune can be assigned while still meeting the hospital feeder ETA.",
+        created_at: "2026-06-27T10:55:00.000Z",
+        ingest_hint: "Use this to show fresh field context changing dispatch recommendations.",
+      },
+    ],
+    knowledge: [
+      {
+        id: "pending-prithvigrid-knowledge-eta-template",
+        account_id: "acct-prithvigrid-energy",
+        collection: "knowledge",
+        source_type: "customer_update_template",
+        title: "Hospital Feeder ETA Update Template",
+        fields: {
+          policy_owner: "Ishita Rao",
+          applies_to: "hospital feeders",
+          rule_type: "communication",
+          severity: "high",
+        },
+        content:
+          "Hospital feeder ETA updates must include current outage status, assigned certified crew, safety approval status, next update time, and backup plan if restoration risk increases.",
+        created_at: "2026-06-27T11:05:00.000Z",
+        ingest_hint: "Use this to show communication playbooks becoming reusable rule memory.",
+      },
+    ],
+    risks: [
+      {
+        id: "pending-prithvigrid-risk-rain-delay",
+        account_id: "acct-prithvigrid-energy",
+        collection: "risks",
+        source_type: "weather_risk",
+        title: "Weather Risk - Igatpuri Road Delay",
+        fields: {
+          severity: "medium",
+          root_cause: "monsoon traffic delay",
+          impact: "crew ETA uncertain",
+          owner: "Harish Nambiar",
+        },
+        content:
+          "Heavy rain near Igatpuri delayed the preferred crew by at least 90 minutes. The risk is not technical but operational: ETA promises may become unreliable unless the backup crew option is evaluated.",
+        created_at: "2026-06-27T11:15:00.000Z",
+        ingest_hint: "Use this to show an operational risk becoming episodic memory.",
+      },
+    ],
   },
 };
 

@@ -198,6 +198,29 @@ Corrective action: credentialing blockers for Aarogya must be escalated to Meera
 Renewal risk increased from medium to medium-high after this incident.""",
     },
     {
+        "id": "src-aarogya-crm-open-reqs",
+        "account_id": "acct-aarogya-health",
+        "collection": "crm",
+        "source_type": "crm_job_requirements",
+        "title": "CRM Open Requirements - Aarogya ICU And Epic",
+        "fields": {"open_roles": 24, "priority_city": "Bengaluru", "owner": "Siddharth Menon"},
+        "content": """Open requirements: 16 ICU nurses, 5 emergency ward nurses, and 3 Epic analysts.
+Eight ICU nurse starts are needed before July 5 across Bengaluru and Pune.
+Siddharth Menon prefers shortlists with verified credentialing status and backup candidate notes.
+The Epic analyst requirement is less urgent but high-value because it supports the August go-live readiness review.""",
+    },
+    {
+        "id": "src-aarogya-risk-renewal",
+        "account_id": "acct-aarogya-health",
+        "collection": "risks",
+        "source_type": "renewal_risk_note",
+        "title": "Renewal Risk Note - Aarogya Executive Trust",
+        "fields": {"severity": "high", "owner": "Kavya Raman", "impact": "renewal confidence"},
+        "content": """Kavya Raman told the team that one more unexplained start-date miss will trigger a vendor review before renewal.
+The account is not purely price-sensitive; the biggest renewal risk is confidence in execution discipline.
+Daily status updates should mention credentialing status, expected start date, backup option, and single owner for each blocker.""",
+    },
+    {
         "id": "src-navapay-crm-account",
         "account_id": "acct-navapay-fintech",
         "collection": "crm",
@@ -264,6 +287,45 @@ Root cause is suspected to be queue saturation combined with webhook retry storm
 Risk: renewal downgrade or competitor replacement if reliability plan is not accepted before steering committee.""",
     },
     {
+        "id": "src-navapay-crm-stakeholders",
+        "account_id": "acct-navapay-fintech",
+        "collection": "crm",
+        "source_type": "crm_relationships",
+        "title": "Stakeholder Map - NavaPay",
+        "fields": {
+            "executive_sponsor": "Suhani Bansal",
+            "technical_owner": "Vikram Sethi",
+            "ops_owner": "Aditi Prakash",
+            "procurement": "Manav Chawla",
+        },
+        "content": """Suhani Bansal owns renewal sentiment and needs an executive-level reliability narrative.
+Vikram Sethi controls technical acceptance and wants RCA details before any commercial discussion.
+Aditi Prakash can unblock reconciliation adoption if training is mapped to actual exception workflows.
+Manav Chawla from procurement is already comparing competitor pricing and will join the next renewal call.""",
+    },
+    {
+        "id": "src-navapay-knowledge-reconciliation",
+        "account_id": "acct-navapay-fintech",
+        "collection": "knowledge",
+        "source_type": "product_enablement_playbook",
+        "title": "Reconciliation Adoption Playbook",
+        "fields": {"playbook_owner": "Product Enablement", "applies_to": "payments operations"},
+        "content": """Low reconciliation adoption should be treated as workflow trust risk, not just training risk.
+Run a 45-minute workflow lab using the customer's real exception categories, then measure exception closure rate.
+If adoption is below 55 percent, assign a product specialist and customer operations champion for two weekly sessions.""",
+    },
+    {
+        "id": "src-navapay-risk-competitor",
+        "account_id": "acct-navapay-fintech",
+        "collection": "risks",
+        "source_type": "competitive_risk",
+        "title": "Competitor Risk - NavaPay Renewal",
+        "fields": {"severity": "high", "competitor_signal": "dedicated reliability pod"},
+        "content": """Procurement mentioned a competitor offering lower pricing and a dedicated reliability pod.
+The risk is strongest if Flow360 cannot show named owners, settlement-window monitoring, and a prevention plan.
+Recommended counter-position: reliability plan plus executive sponsor update before procurement anchors on price.""",
+    },
+    {
         "id": "src-prithvigrid-crm-account",
         "account_id": "acct-prithvigrid-energy",
         "collection": "crm",
@@ -314,6 +376,39 @@ Hospital feeder incidents require a customer ETA update every two hours until re
         "content": """Root cause: technician assignment was delayed because safety certification status was checked after dispatch instead of before.
 Impact: feeder restoration exceeded SLA by 3 hours and hospital operations complained about communication gaps.
 Corrective action: pre-check technician safety certification before dispatch and send customer ETA updates every two hours for hospital feeders.""",
+    },
+    {
+        "id": "src-prithvigrid-crm-assets",
+        "account_id": "acct-prithvigrid-energy",
+        "collection": "crm",
+        "source_type": "crm_asset_register",
+        "title": "CRM Asset Register - Critical Feeders",
+        "fields": {"critical_feeders": 4, "region": "Maharashtra", "owner": "Harish Nambiar"},
+        "content": """Critical feeder list includes Nashik hospital feeder HF-12, Pune industrial feeder PI-07, Solapur municipal feeder SM-03, and Belagavi waterworks feeder BW-09.
+HF-12 and PI-07 have the highest penalty exposure because downstream customers require two-hour ETA updates.
+Harish Nambiar wants dispatch recommendations to include asset criticality, technician certification, and customer communication owner.""",
+    },
+    {
+        "id": "src-prithvigrid-knowledge-monsoon",
+        "account_id": "acct-prithvigrid-energy",
+        "collection": "knowledge",
+        "source_type": "monsoon_response_playbook",
+        "title": "Monsoon Dispatch Playbook",
+        "fields": {"policy_owner": "Ishita Rao", "applies_to": "field dispatch"},
+        "content": """During monsoon alerts, transformer heat thresholds, feeder criticality, and technician certification must be evaluated before assigning crews.
+Hospital and municipal feeders require ETA communication every two hours.
+If the preferred technician has expired refresher status, assign the next certified technician even if travel time is 30 minutes longer.""",
+    },
+    {
+        "id": "src-prithvigrid-risk-safety-nearmiss",
+        "account_id": "acct-prithvigrid-energy",
+        "collection": "risks",
+        "source_type": "safety_near_miss",
+        "title": "Safety Near Miss - Expired Refresher Assignment",
+        "fields": {"severity": "high", "root_cause": "certification checked too late"},
+        "content": """A crew was nearly dispatched to transformer T-18 before the system flagged expired safety refresher status.
+The customer saw the assignment reversal and asked whether Flow360 can prevent unsafe dispatch recommendations.
+Future recommendations must check safety refresher status before ETA promises are sent to Harish Nambiar.""",
     },
 ]
 

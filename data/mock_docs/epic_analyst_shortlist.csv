@@ -1,4 +1,7 @@
-candidate,role,availability,compliance_status,rate_variance,notes
-Arjun Prakash,Epic Orders analyst,2026-07-06,background complete,0,strong orders build experience
-Nisha Bhat,Epic ClinDoc analyst,2026-07-08,fully compliant,9,hospital rollout experience
-Neel Thomas,Epic Bridges analyst,2026-07-10,missing reference check,4,can cover integration backlog
+candidate_id,name,module_expertise,city,availability_date,fit_score,rate_variance_percent,bgv_status,identity_status,client_reference_status,facility_access_status,missing_items,risk_flags,recruiter_note,recommended_label
+EPI-001,Aishwarya Bhat,Epic Orders and ClinDoc,Bengaluru,2026-07-09,89,7,verified,verified,pending,NDA pending,"client reference; facility NDA","NDA pending","Best functional fit for Aarogya August go-live readiness. Needs reference and NDA completion before final submission.",conditional
+EPI-002,Karan Malhotra,Epic Orders,Hyderabad,2026-07-06,81,6,identity verified,verified,pending,not started,client reference check,"module fit review required","Available quickly but reference and module-fit review remain open.",conditional
+EPI-003,Pranav Reddy,Epic Ambulatory,Hyderabad,2026-07-12,78,4,identity verified,verified,pending,not started,reference check pending,"later availability","Useful backup if Epic Orders candidates do not clear.",backup
+EPI-004,Nandita Sinha,Epic Revenue Cycle,Pune,2026-07-14,74,2,verified,verified,complete,not started,facility access packet,"module mismatch","Strong healthcare IT background but weaker module match for current go-live.",hold
+EPI-005,Arjun Mehta,Epic Orders and Reporting,Mumbai,2026-07-10,83,9,verified,verified,complete,NDA pending,NDA pending,"premium near threshold","Good alternate if Aishwarya cannot complete NDA; rate variance near threshold.",backup
+EPI-006,Leela Krishnan,Epic ClinDoc,Mysuru,2026-07-11,80,5,in progress,verified,pending,not started,BGV completion,"BGV pending","Do not submit until BGV clears.",blocked
