@@ -13,13 +13,13 @@ Point out the cinematic hero: "The landing page uses an original coded scene ins
 Open `/app`.
 
 Show:
-- Northstar Health account.
-- Critical requirements.
-- SLA breach risk.
-- Renewal exposure.
-- Memory confidence.
+- Three accounts: Aarogya Health Network, NavaPay Fintech, and PrithviGrid Utilities.
+- CRM, meetings/mails, knowledge, risks/incidents, and candidate/BGV tabs.
+- Right-side FlowGuide assistant.
 
-Say: "The account manager sees the decision workspace immediately. No chat prompt is required."
+Say: "The app simulates connected enterprise systems. When a user adds CRM notes, meeting notes, policies, or incidents, Flow360 ingests them into persistent memory."
+
+Choose Aarogya Health Network.
 
 ## 1:20 - 2:20 Run Planner
 
@@ -36,9 +36,9 @@ Open the top recommendation.
 Say: "Each next best action includes owner, due date, priority, confidence, rationale, business metric, and evidence."
 
 Highlight:
-- Priya N. license verification.
-- CFO cost-risk approval brief.
-- Executive renewal-risk check-in.
+- Ananya Sharma license verification.
+- Rohan Kulkarni cost-risk approval brief.
+- Kavya Raman renewal-risk check-in.
 
 ## 3:20 - 4:10 Evidence And Memory
 
@@ -50,7 +50,7 @@ Say: "This is not naive RAG. We separate raw, semantic, episodic, profile, and r
 
 Click `Approve` on the top action.
 
-Say: "Human-in-the-loop review controls execution and writes reviewer feedback into memory."
+Say: "Human-in-the-loop review controls execution. Approval creates a queued action draft and writes reviewer feedback into memory."
 
 ## 4:45 - 5:00 Close
 

@@ -1,4 +1,4 @@
-# Competitor Intelligence - Northstar Renewal
+# Competitor Intelligence - Aarogya Renewal
 
 A competing staffing vendor is offering a 10-day replacement guarantee and a flat 6 percent premium cap.
 
@@ -9,4 +9,3 @@ Flow360 can differentiate with:
 - Faster shortlist delivery
 - Named escalation ownership
 - CFO-ready cost-risk explanation
-

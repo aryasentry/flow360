@@ -24,6 +24,72 @@ export type Recommendation = {
   created_at?: string;
 };
 
+export type DashboardMetric = {
+  label: string;
+  value: string;
+  delta: string;
+};
+
+export type RiskTrendPoint = {
+  day: string;
+  risk: number;
+  confidence: number;
+};
+
+export type BusinessDomain = "healthcare_staffing" | "saas_customer_success" | "energy_field_service";
+
+export type AccountSummary = {
+  id: string;
+  name: string;
+  segment: string;
+  domain: BusinessDomain;
+  health: string;
+  renewal_date?: string | null;
+  description: string;
+  supports_candidates: boolean;
+  primary_user: string;
+  metrics: DashboardMetric[];
+  risk_trend: RiskTrendPoint[];
+  metadata: Record<string, unknown>;
+};
+
+export type SourceCollection = "crm" | "interactions" | "knowledge" | "risks" | "candidates";
+
+export type SourceEntry = {
+  id: string;
+  account_id: string;
+  collection: SourceCollection;
+  source_type: string;
+  title: string;
+  content: string;
+  fields: Record<string, unknown>;
+  created_at?: string;
+};
+
+export type CandidateProfile = {
+  id: string;
+  account_id: string;
+  name: string;
+  role: string;
+  availability_date?: string | null;
+  credentialing_status: string;
+  bgv_status: string;
+  fit_score: number;
+  rate_variance_percent: number;
+  missing_items: string[];
+  risk_flags: string[];
+  metadata: Record<string, unknown>;
+};
+
+export type BGVResult = {
+  candidate_id: string;
+  status: "verified" | "needs_review" | "blocked";
+  score: number;
+  summary: string;
+  missing_items: string[];
+  evidence: Evidence[];
+};
+
 export type AgentStep = {
   name: string;
   status: string;
@@ -42,26 +108,13 @@ export type MemoryCard = {
   updated_at?: string;
 };
 
-export type DashboardMetric = {
-  label: string;
-  value: string;
-  delta: string;
-};
-
-export type RiskTrendPoint = {
-  day: string;
-  risk: number;
-  confidence: number;
-};
-
 export type DashboardState = {
-  account: {
-    id: string;
-    name: string;
-    segment: string;
-  };
+  accounts: AccountSummary[];
+  account: AccountSummary;
   recommendations: Recommendation[];
   memory: MemoryCard[];
+  sources: Record<SourceCollection, SourceEntry[]>;
+  candidates: CandidateProfile[];
   metrics: DashboardMetric[];
   riskTrend: RiskTrendPoint[];
   demoInteraction: string;
@@ -85,5 +138,17 @@ export type MemoryQueryResponse = {
   confidence: number;
   memory_used: MemoryCard[];
   evidence_used: Evidence[];
+  mode: "live" | "demo-fallback";
+};
+
+export type GuideMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type GuideChatResponse = {
+  answer: string;
+  suggestions: string[];
+  confidence: number;
   mode: "live" | "demo-fallback";
 };

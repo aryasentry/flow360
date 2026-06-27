@@ -62,6 +62,7 @@ textarea {
     radial-gradient(ellipse at 22% 37rem, rgba(245, 158, 11, 0.18), transparent 44%),
     radial-gradient(ellipse at 78% 35rem, rgba(14, 165, 233, 0.16), transparent 46%),
     linear-gradient(180deg, #050505 0%, #050607 42%, #061018 75%, #030506 100%);
+  animation: cosmic-drift 18s ease-in-out infinite alternate;
 }
 
 .apple-landing::before {
@@ -89,6 +90,7 @@ textarea {
     radial-gradient(circle at 73% 34%, rgba(255, 255, 255, 0.65) 0 1px, transparent 1.5px),
     radial-gradient(circle at 88% 70%, rgba(255, 255, 255, 0.74) 0 1px, transparent 1.5px);
   background-size: 190px 190px, 260px 260px, 310px 310px, 230px 230px, 360px 360px;
+  animation: star-drift 28s linear infinite;
 }
 
 .apple-landing > section {
@@ -138,6 +140,7 @@ textarea {
     0 -18px 78px rgba(125, 211, 252, 0.3),
     0 -48px 128px rgba(251, 146, 60, 0.22);
   opacity: 0.82;
+  animation: horizon-pulse 7s ease-in-out infinite;
 }
 
 .hero-horizon::before {
@@ -154,6 +157,7 @@ textarea {
 
 .hero-preview {
   transform: translateY(30%);
+  animation: preview-float 7s ease-in-out infinite;
 }
 
 .section-aurora {
@@ -161,6 +165,7 @@ textarea {
   pointer-events: none;
   filter: blur(28px);
   opacity: 0.78;
+  animation: aurora-shift 9s ease-in-out infinite alternate;
 }
 
 .section-aurora-top {

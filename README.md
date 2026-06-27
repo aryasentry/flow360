@@ -20,22 +20,30 @@ Flow360 combines those signals and recommends what the account manager or recrui
 
 Example:
 
-> Escalate Priya N.'s license verification because the start date is within 5 days, license verification is incomplete, and the account has prior SLA breach risk. Confidence: 89%. Evidence: meeting transcript, credentialing checklist, CRM account history.
+> Block Ananya Sharma from final shortlist until her license clears because the start date is within 4 days, license verification is incomplete, and the account has prior SLA breach risk. Confidence: 91%. Evidence: meeting transcript, credentialing checklist, CRM account history.
 
 ## Demo Domain
 
-The MVP focuses on a fictional healthcare and IT staffing account:
+The MVP demonstrates one reusable platform across three fictional Indian B2B accounts:
 
-- Account: Northstar Health Network
-- Users: account managers, recruiters, compliance leads, client partners
-- Business process: urgent healthcare and IT staffing fulfillment
-- Decision points: candidate readiness, premium-rate approval, renewal risk, stakeholder follow-up
-- Success metrics: lower SLA breach risk, faster approvals, better renewal confidence, fewer missed credentialing blockers
+- Aarogya Health Network: healthcare staffing, candidate BGV, credentialing, SLA, and renewal risk
+- NavaPay Fintech: SaaS customer success, API latency, product adoption, and ARR renewal risk
+- PrithviGrid Utilities: energy field service, outage response, technician safety, and SLA risk
+
+The frontend includes simulated source-system pages for CRM, meetings/mails, knowledge base, risks/incidents, and candidates/BGV. These pages behave like internal connectors: when a user adds a new entry or uploads a document, the backend ingests it into Flow360 memory.
 
 ## Core Features
 
 - Premium SaaS landing page with a dark cinematic Flow360 hero
 - Operator dashboard for account managers
+- Multi-account account picker with three business types
+- CRM dashboard tab for structured customer/account data
+- Meeting notes, transcript, and mail tab
+- Knowledge base tab for policies, playbooks, checklists, and rate cards
+- Risks and incidents tab for SLA breaches, RCA notes, and renewal risks
+- Candidates/BGV tab for individual credentialing decisions when applicable
+- Collapsible sidebar with icon+label and icon-only mode
+- Right-side FlowGuide assistant that sees the current screen, memory, and evidence
 - Planner-driven agent workflow using LangGraph
 - Text and file ingestion for transcripts, CRM notes, emails, PDFs, and docs
 - LlamaIndex-style chunking for retrieval-ready enterprise knowledge
@@ -47,7 +55,7 @@ The MVP focuses on a fictional healthcare and IT staffing account:
 - Human approval or rejection before recommendations are accepted
 - Persistent memory updates from human review
 - Memory graph UI
-- Ask Memory assistant over persistent account memory
+- Conversational memory and navigation assistant through FlowGuide
 - Demo fallback mode if Supabase or Groq is not configured
 
 See the full feature breakdown in [FEATURES.md](FEATURES.md).
@@ -207,6 +215,7 @@ http://localhost:11434
 Create a Supabase project, open the SQL editor, and run these scripts in order:
 
 ```text
+supabase/sql/000_reset_all_demo_data.sql -- optional, only when resetting an existing demo DB
 supabase/sql/001_extensions.sql
 supabase/sql/002_schema.sql
 supabase/sql/003_vector_search.sql
@@ -322,14 +331,13 @@ Use this flow for the hackathon video:
 1. Open `http://localhost:3000`.
 2. Show the premium Flow360 landing page.
 3. Click `Get Started`.
-4. In the dashboard, show Northstar Health Network metrics.
-5. Click `Run Planner`.
-6. Show the agent trace.
-7. Open a top recommendation.
-8. Explain confidence, rationale, owner, due date, and supporting evidence.
-9. Approve or reject the action.
-10. Open the memory view and show that feedback becomes persistent memory.
-11. Use Ask Memory to ask what the account manager should remember before acting.
+4. Select one of the three accounts.
+5. Show CRM, meetings/mails, knowledge, and risks/incidents tabs as simulated integrations.
+6. For Aarogya, open Candidates/BGV and run a credentialing check.
+7. Click `Run Planner`.
+8. Open a top recommendation and explain confidence, rationale, owner, due date, and evidence.
+9. Approve or reject the action and show that approval creates a queued execution draft plus memory.
+10. Use FlowGuide on the right side to ask what to click next or why the recommendation matters.
 
 ## Backend Endpoints
 
@@ -337,6 +345,9 @@ Use this flow for the hackathon video:
 | --- | --- |
 | `GET /health` | Backend, Groq, and Supabase status |
 | `GET /demo/state` | Dashboard demo state |
+| `GET /accounts` | List all configured client accounts |
+| `GET /sources/{account_id}` | List CRM, interaction, knowledge, risk, and candidate source entries |
+| `POST /sources` | Create a structured source entry and ingest it into memory |
 | `POST /ingest/text` | Ingest pasted text |
 | `POST /ingest/demo` | Ingest bundled mock documents |
 | `POST /ingest/upload` | Upload and index files |
@@ -344,8 +355,11 @@ Use this flow for the hackathon video:
 | `GET /agent/runs/{run_id}` | Fetch a saved agent run |
 | `GET /recommendations` | List recommendations |
 | `POST /recommendations/{id}/review` | Approve or reject a recommendation |
+| `GET /candidates/{account_id}` | List candidate profiles for individual-centric accounts |
+| `POST /candidates/{account_id}/{candidate_id}/bgv` | Run candidate BGV/credentialing check |
 | `GET /memory/{entity_type}/{entity_id}` | Fetch memory cards |
 | `POST /memory/query` | Ask questions over persistent memory |
+| `POST /guide/chat` | Ask the right-side FlowGuide assistant for contextual help |
 
 ## Mock Data
 

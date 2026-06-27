@@ -31,6 +31,8 @@ Open Supabase SQL editor and run:
 3. `supabase/sql/003_vector_search.sql`
 4. `supabase/sql/004_seed_data.sql`
 
+If you already seeded an older demo and want to delete all Flow360 data first, run `supabase/sql/000_reset_all_demo_data.sql` before the seed script. It keeps the schema and functions but truncates demo rows.
+
 After the backend starts, call `POST /ingest/demo` once from Swagger or the frontend upload flow to create vector chunks from the mock documents.
 
 ## 3. Frontend

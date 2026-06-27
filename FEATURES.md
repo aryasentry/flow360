@@ -12,16 +12,30 @@ This document summarizes what Flow360 includes and how each capability supports 
 
 ## 2. Operator Dashboard
 
-- Compact left navigation
-- Account command center for Northstar Health Network
+- Multi-account landing view with Aarogya Health Network, NavaPay Fintech, and PrithviGrid Utilities
+- Collapsible sidebar with icon+label mode and icon-only mode
+- Account command center for each selected client
 - Recommendation inbox
 - Selected recommendation detail panel
 - Evidence drawer style sections
 - Agent decision flow panel
 - Metrics for critical requirements, SLA risk, renewal exposure, and memory confidence
 - Minimal-click workflow for demo delivery
+- Right-side FlowGuide assistant that sees the active account, visible tab, selected recommendation, memory, and source counts
 
-## 3. Agentic Workflow
+## 3. Source-System Tabs
+
+Flow360 simulates enterprise integrations through internal source pages:
+
+- CRM Dashboard: client owner, decision maker, renewal date, contract value, stakeholder context
+- Meeting Notes, Transcripts And Mails: customer calls, email threads, meeting summaries
+- Knowledge Base: policies, playbooks, credentialing checklists, rate cards
+- Risks And Incidents: SLA breaches, RCA notes, renewal risks, previous mistakes
+- Candidates And BGV: candidate profiles and credentialing checks when the business decision is about individuals
+
+Each tab supports structured entry. Relevant tabs also support file upload. Saving or uploading creates memory immediately.
+
+## 4. Agentic Workflow
 
 Implemented in `backend/app/agents/workflow.py`.
 
@@ -42,13 +56,14 @@ The planner uses a five-step workflow:
 4. Generate ranked next best actions.
 5. Prepare memory updates for human feedback.
 
-## 4. Ingestion
+## 5. Ingestion
 
 Supported paths:
 
 - `POST /ingest/text`
 - `POST /ingest/upload`
 - `POST /ingest/demo`
+- `POST /sources`
 
 Supported uploaded content:
 
@@ -60,7 +75,7 @@ Supported uploaded content:
 - Meeting transcripts
 - Playbooks and policies
 
-## 5. Retrieval
+## 6. Retrieval
 
 - LlamaIndex-style text chunking
 - Ollama embeddings using `nomic-embed-text:latest`
@@ -68,7 +83,7 @@ Supported uploaded content:
 - Metadata-aware retrieval by account id
 - Keyword fallback when Supabase is unavailable
 
-## 6. LLM Reasoning
+## 7. LLM Reasoning
 
 - Groq-backed reasoning
 - API key rotation in `backend/app/services/groq_client.py`
@@ -80,7 +95,7 @@ Models configured by default:
 - `llama-3.3-70b-versatile` for reasoning
 - `llama-3.1-8b-instant` for lightweight memory answers
 
-## 7. Recommendations
+## 8. Recommendations
 
 Each recommendation includes:
 
@@ -98,16 +113,17 @@ Each recommendation includes:
 
 Example:
 
-> Escalate Priya N.'s license verification because the role starts within 5 days, credentialing is unresolved, and the account has prior SLA risk.
+> Block Ananya Sharma from final shortlist until license clears because the role starts within 4 days, license verification is pending, and Aarogya already had a renewal-risk incident from late license checks.
 
-## 8. Human-In-The-Loop Review
+## 9. Human-In-The-Loop Review
 
 - Users can approve or reject recommendations
 - Review status updates immediately in the UI
 - Review feedback is saved through `POST /recommendations/{id}/review`
 - Feedback becomes episodic memory for future decisions
+- Approved actions create a queued execution draft, so approval prepares follow-through instead of only changing button state
 
-## 9. Persistent Memory
+## 10. Persistent Memory
 
 Memory types:
 
@@ -117,20 +133,29 @@ Memory types:
 - Profile memory: account summaries and stakeholder context
 - Rule memory: playbooks, policies, SLA rules, and commercial thresholds
 
-## 10. Memory Graph UI
+## 11. Memory Graph UI
 
 - Visual account-centered memory graph
 - Separates profile, rule, episodic, semantic, and raw memory
 - Helps judges see that Flow360 has persistent context, not one-off chat state
 
-## 11. Ask Memory
+## 12. FlowGuide Assistant
 
-- Dashboard includes a question panel over persistent memory
-- Uses `POST /memory/query`
-- Answers with memory and evidence context
+- Persistent right-side chat panel
+- Uses `POST /guide/chat`
+- Sees the active account, current tab, selected recommendation, visible metrics, source counts, memory, and evidence
+- Helps users navigate, understand business terms, and decide what to click next
 - Frontend does not expose model-provider details
 
-## 12. Supabase Integration
+## 13. Candidate BGV And Credentialing
+
+- Available for individual-centric healthcare staffing decisions
+- Runs BGV/credentialing check per candidate
+- Checks license, background verification, missing documents, risk flags, fit score, and rate variance
+- Writes BGV outcome into memory
+- Prevents unsafe shortlisting when license or compliance is incomplete
+
+## 14. Supabase Integration
 
 Supabase is used for:
 
@@ -141,10 +166,13 @@ Supabase is used for:
 - Recommendations
 - Recommendation feedback
 - Memory cards
+- Source entries
+- Candidates
+- Action executions
 
 SQL scripts live in `supabase/sql/`.
 
-## 13. Demo Fallback Mode
+## 15. Demo Fallback Mode
 
 The platform can still run when cloud services are missing:
 
@@ -155,7 +183,7 @@ The platform can still run when cloud services are missing:
 
 This protects the hackathon demo from network/API issues.
 
-## 14. Mock Enterprise Data
+## 16. Mock Enterprise Data
 
 Included under `data/mock_docs/`:
 
@@ -170,8 +198,12 @@ Included under `data/mock_docs/`:
 - SLA incident RCA
 - Stakeholder map
 - Competitor intelligence
+- SaaS renewal save plan
+- API latency incident review
+- Energy safety lockout policy
+- Transformer dispatch notes
 
-## 15. Why It Is Reusable
+## 17. Why It Is Reusable
 
 Flow360 is not hardcoded to one recommendation. The same platform pattern can be reused for:
 

@@ -1,9 +1,8 @@
 # Email Thread - CFO Rate Approval
 
-From: Daniel Iyer
-To: Maya Rao, Flow360 account team
+From: Rohan Kulkarni
+To: Kavya Raman, Flow360 account team
 
-Please send a rate justification by Friday noon. I will approve premium rates only if the staffing team provides a business case comparing vacancy cost, overtime cost, and replacement risk.
+Please send a rate justification by Friday 11 AM. I will approve premium rates only if the staffing team provides a business case comparing vacancy cost, overtime cost, patient-care continuity risk, and replacement risk.
 
-Maya also needs the first shortlist today by 4 PM. Candidates with unresolved compliance items should be clearly marked.
-
+Kavya also needs the first shortlist today by 4 PM. Candidates with unresolved compliance items should be clearly marked.

@@ -1,5 +1,14 @@
-import { fallbackDashboardState, fallbackRun } from "./demo-data";
-import type { AgentRunResult, DashboardState, MemoryQueryResponse } from "./types";
+import { fallbackAccounts, fallbackCandidates, fallbackDashboardState, fallbackRecommendations, fallbackRun, fallbackSources } from "./demo-data";
+import type {
+  AgentRunResult,
+  BGVResult,
+  DashboardState,
+  GuideChatResponse,
+  GuideMessage,
+  MemoryQueryResponse,
+  SourceCollection,
+  SourceEntry,
+} from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
@@ -17,38 +26,80 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function getDashboardState(): Promise<DashboardState> {
+function fallbackForAccount(accountId: string): DashboardState {
+  const account = fallbackAccounts.find((item) => item.id === accountId) ?? fallbackAccounts[0];
+  return {
+    ...fallbackDashboardState,
+    accounts: fallbackAccounts,
+    account,
+    recommendations: fallbackRecommendations.filter((item) => item.account_id === account.id),
+    sources: fallbackSources[account.id] ?? {
+      crm: [],
+      interactions: [],
+      knowledge: [],
+      risks: [],
+      candidates: [],
+    },
+    candidates: account.supports_candidates ? fallbackCandidates.filter((item) => item.account_id === account.id) : [],
+    metrics: account.metrics,
+    riskTrend: account.risk_trend,
+  };
+}
+
+export async function getDashboardState(accountId = "acct-aarogya-health"): Promise<DashboardState> {
   try {
-    const data = await request<DashboardState>("/demo/state");
+    const data = await request<DashboardState>(`/demo/state?account_id=${encodeURIComponent(accountId)}`);
+    const fallback = fallbackForAccount(accountId);
     return {
-      ...fallbackDashboardState,
+      ...fallback,
       ...data,
-      recommendations: data.recommendations?.length
-        ? data.recommendations
-        : fallbackDashboardState.recommendations,
-      memory: data.memory?.length ? data.memory : fallbackDashboardState.memory,
-      metrics: data.metrics?.length ? data.metrics : fallbackDashboardState.metrics,
-      riskTrend: data.riskTrend?.length ? data.riskTrend : fallbackDashboardState.riskTrend,
-      demoInteraction: data.demoInteraction || fallbackDashboardState.demoInteraction,
+      accounts: data.accounts?.length ? data.accounts : fallbackAccounts,
+      recommendations: data.recommendations?.length ? data.recommendations : fallback.recommendations,
+      memory: data.memory?.length ? data.memory : fallback.memory,
+      sources: data.sources ?? fallback.sources,
+      candidates: data.candidates ?? fallback.candidates,
+      metrics: data.metrics?.length ? data.metrics : fallback.metrics,
+      riskTrend: data.riskTrend?.length ? data.riskTrend : fallback.riskTrend,
+      demoInteraction: data.demoInteraction || fallback.demoInteraction,
     };
   } catch {
-    return fallbackDashboardState;
+    return fallbackForAccount(accountId);
   }
 }
 
-export async function runPlanner(interaction: string): Promise<AgentRunResult> {
+export async function runPlanner(accountId: string, interaction: string): Promise<AgentRunResult> {
   try {
     return await request<AgentRunResult>("/agent/run", {
       method: "POST",
       body: JSON.stringify({
-        account_id: "acct-northstar-health",
+        account_id: accountId,
         interaction,
-        objective: "Recommend the next best actions for the account team.",
+        objective: "Recommend the next best actions for the selected account team.",
       }),
     });
   } catch {
-    return fallbackRun;
+    const account = fallbackAccounts.find((item) => item.id === accountId) ?? fallbackAccounts[0];
+    return {
+      ...fallbackRun,
+      account_id: account.id,
+      account_name: account.name,
+      recommendations: fallbackRecommendations.filter((item) => item.account_id === account.id),
+    };
   }
+}
+
+export async function createSourceEntry(payload: {
+  account_id: string;
+  collection: SourceCollection;
+  source_type: string;
+  title: string;
+  content: string;
+  fields: Record<string, unknown>;
+}) {
+  return request<{ entry: SourceEntry }>("/sources", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function reviewRecommendation(id: string, decision: "approved" | "rejected") {
@@ -62,15 +113,16 @@ export async function reviewRecommendation(id: string, decision: "approved" | "r
       }),
     });
   } catch {
-    return { decision };
+    return { review: { decision }, action_execution: decision === "approved" ? { status: "queued" } : null };
   }
 }
 
-export async function uploadDocument(file: File) {
+export async function uploadDocument(file: File, accountId: string, collection: SourceCollection, sourceType = "uploaded_document") {
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("account_id", "acct-northstar-health");
-  formData.append("source_type", "uploaded_document");
+  formData.append("account_id", accountId);
+  formData.append("source_type", sourceType);
+  formData.append("collection", collection);
 
   const response = await fetch(`${API_URL}/ingest/upload`, {
     method: "POST",
@@ -84,23 +136,66 @@ export async function uploadDocument(file: File) {
   return response.json();
 }
 
-export async function askMemory(question: string): Promise<MemoryQueryResponse> {
+export async function runBGV(accountId: string, candidateId: string): Promise<BGVResult> {
+  try {
+    return await request<BGVResult>(`/candidates/${accountId}/${candidateId}/bgv`, { method: "POST" });
+  } catch {
+    const candidate = fallbackCandidates.find((item) => item.id === candidateId);
+    const blocked = !!candidate?.missing_items.some((item) => item.toLowerCase().includes("license"));
+    return {
+      candidate_id: candidateId,
+      status: blocked ? "blocked" : candidate?.missing_items.length ? "needs_review" : "verified",
+      score: blocked ? 68 : candidate?.fit_score ?? 78,
+      summary: candidate
+        ? `${candidate.name} ${blocked ? "should not be shortlisted as fully cleared yet" : "can be considered with current verification status"}.`
+        : "Candidate requires manual review.",
+      missing_items: candidate?.missing_items ?? [],
+      evidence: fallbackRecommendations[0]?.evidence ?? [],
+    };
+  }
+}
+
+export async function askMemory(accountId: string, question: string): Promise<MemoryQueryResponse> {
   try {
     return await request<MemoryQueryResponse>("/memory/query", {
       method: "POST",
       body: JSON.stringify({
         entity_type: "account",
-        entity_id: "acct-northstar-health",
+        entity_id: accountId,
         question,
       }),
     });
   } catch {
+    const fallback = fallbackForAccount(accountId);
     return {
       answer:
-        "Persistent memory points to renewal sensitivity, prior credentialing misses, and urgent start-date risk. Confirm the approval owner, escalate license verification, and capture reviewer feedback after the action is accepted or rejected.",
+        "Persistent memory points to urgent risk, missing decision context, and the need to run the planner after new source data is added.",
       confidence: 74,
-      memory_used: fallbackDashboardState.memory,
-      evidence_used: fallbackDashboardState.recommendations[0]?.evidence ?? [],
+      memory_used: fallback.memory,
+      evidence_used: fallback.recommendations[0]?.evidence ?? [],
+      mode: "demo-fallback",
+    };
+  }
+}
+
+export async function guideChat(payload: {
+  account_id: string;
+  current_view: string;
+  visible_context: Record<string, unknown>;
+  messages: GuideMessage[];
+  question: string;
+}): Promise<GuideChatResponse> {
+  try {
+    return await request<GuideChatResponse>("/guide/chat", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    return {
+      answer:
+        "I can see this account workspace. Start by checking the highest-risk recommendation, then open the evidence and source tabs that created it. If you add a new CRM note, meeting note, policy, or incident, run the planner again.",
+      suggestions: ["Open top action", "Check evidence", "Run Planner"],
+      confidence: 76,
       mode: "demo-fallback",
     };
   }

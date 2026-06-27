@@ -2,7 +2,7 @@
 
 ## Positioning
 
-Flow360 is not a chatbot. It is a reusable agentic decision intelligence platform for workforce and staffing operations. The demo business case is Northstar Health Network, a strategic healthcare staffing account with urgent ICU nurse and Epic analyst requirements.
+Flow360 is not a chatbot. It is a reusable agentic decision intelligence platform for workforce, customer success, and field operations. The demo includes three Indian B2B accounts: Aarogya Health Network for healthcare staffing, NavaPay Fintech for SaaS customer success, and PrithviGrid Utilities for energy field service.
 
 ## System Flow
 
@@ -49,4 +49,3 @@ flowchart LR
 ## Why This Impresses XLVentures
 
 XLVentures publicly describes itself as building people context infrastructure. Flow360 maps directly to that thesis: it turns people, account, role, compliance, and workflow context into explainable operating decisions.
-

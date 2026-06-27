@@ -5,8 +5,7 @@ Root cause: license verification was requested after candidate presentation inst
 Impact:
 - Two delayed starts
 - 36 hours of overtime coverage
-- Executive escalation from Maya Rao
+- Executive escalation from Kavya Raman
 - Account sentiment moved from green to amber
 
-Corrective action: credentialing blockers for Northstar must be escalated before shortlist delivery.
-
+Corrective action: credentialing blockers for Aarogya must be escalated before shortlist delivery.

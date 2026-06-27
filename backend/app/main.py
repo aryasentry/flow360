@@ -8,8 +8,17 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.agents.workflow import Flow360Workflow
 from app.config import get_settings
-from app.demo_data import DEMO_ACCOUNT_ID, DEMO_INTERACTION, DEMO_METRICS, RISK_TREND
-from app.models import AgentRunRequest, Evidence, MemoryCard, MemoryQueryRequest, RecommendationReviewRequest, TextIngestRequest
+from app.demo_data import DEMO_ACCOUNT_ID
+from app.models import (
+    AgentRunRequest,
+    Evidence,
+    GuideChatRequest,
+    MemoryCard,
+    MemoryQueryRequest,
+    RecommendationReviewRequest,
+    SourceEntryRequest,
+    TextIngestRequest,
+)
 from app.services.embeddings import EmbeddingService
 from app.services.groq_client import GroqRouter
 from app.services.store import PlatformStore
@@ -42,10 +51,30 @@ def health() -> dict[str, str | bool]:
 
 
 @app.get("/demo/state")
-def demo_state() -> dict:
-    state = store.dashboard_state()
-    state.update({"metrics": DEMO_METRICS, "riskTrend": RISK_TREND, "demoInteraction": DEMO_INTERACTION})
-    return state
+def demo_state(account_id: str = DEMO_ACCOUNT_ID) -> dict:
+    return store.dashboard_state(account_id)
+
+
+@app.get("/accounts")
+def list_accounts():
+    return {"accounts": [account.model_dump(mode="json") for account in store.list_accounts()]}
+
+
+@app.get("/sources/{account_id}")
+def list_sources(account_id: str, collection: str | None = None):
+    return {"sources": [entry.model_dump(mode="json") for entry in store.list_source_entries(account_id, collection)]}
+
+
+@app.post("/sources")
+def create_source_entry(payload: SourceEntryRequest):
+    return store.ingest_source_entry(
+        account_id=payload.account_id,
+        collection=payload.collection,
+        source_type=payload.source_type,
+        title=payload.title,
+        content=payload.content,
+        fields=payload.fields,
+    )
 
 
 @app.post("/ingest/text")
@@ -63,12 +92,20 @@ async def ingest_upload(
     file: UploadFile = File(...),
     account_id: str = Form(DEMO_ACCOUNT_ID),
     source_type: str = Form("uploaded_document"),
+    collection: str = Form("knowledge"),
 ):
     content = await file.read()
     text = _extract_text(file.filename or "uploaded-file", content)
     if not text.strip():
         raise HTTPException(status_code=400, detail="Could not extract text from uploaded file.")
-    return store.ingest_text(account_id, file.filename or "uploaded-file", text, source_type)
+    return store.ingest_source_entry(
+        account_id=account_id,
+        collection=collection,
+        source_type=source_type,
+        title=file.filename or "uploaded-file",
+        content=text,
+        fields={"filename": file.filename or "uploaded-file"},
+    )
 
 
 @app.post("/agent/run")
@@ -94,6 +131,16 @@ def review_recommendation(recommendation_id: str, payload: RecommendationReviewR
     return store.review_recommendation(recommendation_id, payload.decision, payload.reviewer, payload.notes)
 
 
+@app.get("/candidates/{account_id}")
+def list_candidates(account_id: str):
+    return {"candidates": [candidate.model_dump(mode="json") for candidate in store.list_candidates(account_id)]}
+
+
+@app.post("/candidates/{account_id}/{candidate_id}/bgv")
+def run_bgv(account_id: str, candidate_id: str):
+    return store.run_bgv_check(account_id, candidate_id)
+
+
 @app.get("/memory/{entity_type}/{entity_id}")
 def get_memory(entity_type: str, entity_id: str):
     return {"memory": [item.model_dump(mode="json") for item in store.get_memory(entity_type, entity_id)]}
@@ -111,6 +158,14 @@ def query_memory(payload: MemoryQueryRequest):
         "evidence_used": [item.model_dump(mode="json") for item in evidence[:4]],
         "mode": mode,
     }
+
+
+@app.post("/guide/chat")
+def guide_chat(payload: GuideChatRequest):
+    memories = store.get_memory("account", payload.account_id)
+    evidence = store.retrieve_context(payload.question, account_id=payload.account_id, top_k=5)
+    answer, suggestions, confidence, mode = _answer_guide_query(payload, memories, evidence)
+    return {"answer": answer, "suggestions": suggestions, "confidence": confidence, "mode": mode}
 
 
 def _answer_memory_query(question: str, memories: list[MemoryCard], evidence: list[Evidence]) -> tuple[str, int, str]:
@@ -159,6 +214,66 @@ Return a short answer with 2-4 concrete bullets or sentences."""
     if evidence:
         base_confidence = min(92, base_confidence + 4)
     return result.content.strip(), base_confidence, "live"
+
+
+def _answer_guide_query(
+    payload: GuideChatRequest, memories: list[MemoryCard], evidence: list[Evidence]
+) -> tuple[str, list[str], int, str]:
+    account = store.get_account(payload.account_id)
+    memory_context = "\n".join(
+        f"- {item.memory_type}: {item.title} ({item.confidence}%): {item.summary}" for item in memories[:8]
+    )
+    evidence_context = "\n".join(
+        f"- {item.source_title} [{item.source_type}]: {item.snippet}" for item in evidence[:6]
+    )
+    visible_context = payload.visible_context or {}
+    suggestions = [
+        "Run Planner",
+        "Open evidence",
+        "Check missing data",
+    ]
+    fallback = (
+        f"You are viewing {account.name}. Start with the highest-risk card, then open the evidence for the top recommendation. "
+        "If you added new CRM, meeting, policy, or incident data, run the planner again so memory and recommendations refresh."
+    )
+
+    if not llm.enabled:
+        return fallback, suggestions, 76, "demo-fallback"
+
+    history = "\n".join(f"{message.role}: {message.content}" for message in payload.messages[-8:])
+    system = (
+        "You are FlowGuide, an in-app assistant for Flow360. "
+        "Guide the user through the current screen and explain business terms simply. "
+        "You can use visible UI context, persistent memory, and evidence. "
+        "Be concise, practical, and never mention model providers."
+    )
+    user = f"""Account:
+{account.name} ({account.segment}, {account.domain})
+
+Current view:
+{payload.current_view}
+
+Visible UI context:
+{visible_context}
+
+Memory:
+{memory_context or "None"}
+
+Evidence:
+{evidence_context or "None"}
+
+Chat history:
+{history or "None"}
+
+User question:
+{payload.question}
+
+Answer in 2-5 short bullets or sentences. Then include 2-3 suggested next clicks as plain text."""
+    result = llm.complete(system=system, user=user, model=settings.groq_fast_model, temperature=0.15, max_tokens=700)
+    if not result or not result.content.strip():
+        return fallback, suggestions, 76, "demo-fallback"
+
+    return result.content.strip(), suggestions, 86 if memories or evidence else 78, "live"
 
 
 def _extract_text(filename: str, content: bytes) -> str:

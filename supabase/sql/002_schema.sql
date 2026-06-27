@@ -2,12 +2,21 @@ create table if not exists accounts (
   id text primary key,
   name text not null,
   segment text not null,
+  domain text not null default 'healthcare_staffing',
   health text default 'unknown',
   renewal_date date,
+  description text default '',
+  supports_candidates boolean default false,
+  primary_user text default 'Account Manager',
   metadata jsonb default '{}'::jsonb,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+alter table accounts add column if not exists domain text not null default 'healthcare_staffing';
+alter table accounts add column if not exists description text default '';
+alter table accounts add column if not exists supports_candidates boolean default false;
+alter table accounts add column if not exists primary_user text default 'Account Manager';
 
 create table if not exists contacts (
   id text primary key,
@@ -34,12 +43,36 @@ create table if not exists job_reqs (
 
 create table if not exists candidates (
   id text primary key,
+  account_id text references accounts(id) on delete cascade,
   name text not null,
   role text,
   availability_date date,
   compliance_status text,
+  credentialing_status text default 'unknown',
+  bgv_status text default 'not_started',
+  fit_score int default 70 check (fit_score between 0 and 100),
   rate_variance_percent numeric,
+  missing_items jsonb default '[]'::jsonb,
+  risk_flags jsonb default '[]'::jsonb,
   metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
+alter table candidates add column if not exists account_id text references accounts(id) on delete cascade;
+alter table candidates add column if not exists credentialing_status text default 'unknown';
+alter table candidates add column if not exists bgv_status text default 'not_started';
+alter table candidates add column if not exists fit_score int default 70 check (fit_score between 0 and 100);
+alter table candidates add column if not exists missing_items jsonb default '[]'::jsonb;
+alter table candidates add column if not exists risk_flags jsonb default '[]'::jsonb;
+
+create table if not exists source_entries (
+  id text primary key,
+  account_id text references accounts(id) on delete cascade,
+  collection text not null check (collection in ('crm', 'interactions', 'knowledge', 'risks', 'candidates')),
+  source_type text not null,
+  title text not null,
+  content text not null,
+  fields jsonb default '{}'::jsonb,
   created_at timestamptz default now()
 );
 
@@ -113,6 +146,18 @@ create table if not exists recommendation_feedback (
   created_at timestamptz default now()
 );
 
+create table if not exists action_executions (
+  id text primary key,
+  recommendation_id text references recommendations(id) on delete cascade,
+  account_id text references accounts(id) on delete cascade,
+  title text not null,
+  owner_role text,
+  status text not null default 'queued',
+  draft text,
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
 create table if not exists memory_cards (
   id text primary key,
   entity_type text not null,
@@ -142,4 +187,6 @@ create index if not exists idx_chunks_account_id on document_chunks(account_id);
 create index if not exists idx_chunks_embedding on document_chunks using ivfflat (embedding vector_cosine_ops) with (lists = 100);
 create index if not exists idx_recommendations_account_status on recommendations(account_id, status);
 create index if not exists idx_memory_entity on memory_cards(entity_type, entity_id);
-
+create index if not exists idx_source_entries_account_collection on source_entries(account_id, collection);
+create index if not exists idx_candidates_account_id on candidates(account_id);
+create index if not exists idx_action_executions_account_id on action_executions(account_id);

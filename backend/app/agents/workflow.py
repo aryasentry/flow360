@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, TypedDict
 
 from app.config import Settings
-from app.demo_data import DEMO_ACCOUNT_ID, DEMO_ACCOUNT_NAME, DEMO_INTERACTION
+from app.demo_data import DEMO_ACCOUNTS, DEMO_ACCOUNT_ID, DEMO_INTERACTION
 from app.models import AgentRunRequest, AgentRunResult, AgentStep, Evidence, Recommendation
 from app.services.groq_client import GroqRouter
 from app.services.retrieval import EnterpriseRetriever
@@ -39,7 +39,7 @@ class Flow360Workflow:
         state: FlowState = {
             "run_id": f"run-{uuid.uuid4().hex[:10]}",
             "account_id": request.account_id,
-            "account_name": DEMO_ACCOUNT_NAME if request.account_id == DEMO_ACCOUNT_ID else request.account_id,
+            "account_name": self._account_name(request.account_id),
             "objective": request.objective,
             "interaction": request.interaction or DEMO_INTERACTION,
             "agent_trace": [],
@@ -82,6 +82,13 @@ class Flow360Workflow:
         )
         self.store.save_recommendations(result.recommendations)
         return result
+
+    @staticmethod
+    def _account_name(account_id: str) -> str:
+        for account in DEMO_ACCOUNTS:
+            if account["id"] == account_id:
+                return account["name"]
+        return account_id
 
     def _build_graph(self):
         try:
@@ -150,28 +157,7 @@ class Flow360Workflow:
 
     def _analysis_node(self, state: FlowState) -> FlowState:
         context_payload = [item.model_dump() for item in state.get("retrieved_context", [])]
-        fallback = {
-            "account_health": "amber: renewal-sensitive with active SLA breach risk",
-            "urgency_score": 91,
-            "risks": [
-                "Critical healthcare starts are within 5 days while license verification is unresolved.",
-                "The CFO needs premium-rate justification before approval.",
-                "Prior credentialing misses increased renewal risk.",
-            ],
-            "opportunities": [
-                "Win executive trust by sending a transparent cost-risk brief.",
-                "Differentiate with a replacement guarantee tied to the first 10 days.",
-            ],
-            "missing_information": [
-                "Final CFO approval threshold for rates above card.",
-                "Priya N.'s license verification completion time.",
-                "Replacement guarantee terms acceptable to Maya Rao.",
-            ],
-            "decision_points": [
-                "Present Priya with compliance caveat or wait for license verification.",
-                "Whether to include premium-rate candidates in the 4 PM shortlist.",
-            ],
-        }
+        fallback = self._fallback_analysis(state["account_id"])
         analysis = self.llm.complete_json(
             system="You are a workforce operations analyst. Return only strict JSON with account_health, urgency_score, risks, opportunities, missing_information, and decision_points.",
             user=json.dumps({"interaction": state["interaction"], "context": context_payload}, indent=2),
@@ -187,46 +173,7 @@ class Flow360Workflow:
     def _recommendation_node(self, state: FlowState) -> FlowState:
         evidence = state.get("retrieved_context", [])
         evidence_payload = [item.model_dump() for item in evidence]
-        fallback = {
-            "recommendations": [
-                {
-                    "title": "Escalate Priya N.'s license verification",
-                    "action": "Ask compliance lead to verify Priya N.'s ICU license before the 4 PM shortlist and mark her as conditional until cleared.",
-                    "category": "Compliance",
-                    "priority": "critical",
-                    "owner_role": "Compliance Lead",
-                    "due_date": "Today, 2:30 PM",
-                    "confidence": 89,
-                    "rationale": "The role starts within 5 days, the account has prior credentialing misses, and Priya is the strongest ICU candidate.",
-                    "evidence_indexes": [0, 2, 4],
-                    "business_metric": "Reduce SLA breach risk and protect renewal confidence.",
-                },
-                {
-                    "title": "Send CFO cost-risk approval brief",
-                    "action": "Prepare a one-page premium-rate justification comparing vacancy cost, overtime exposure, and replacement guarantee options.",
-                    "category": "Commercial",
-                    "priority": "high",
-                    "owner_role": "Account Manager",
-                    "due_date": "Friday, 11:00 AM",
-                    "confidence": 84,
-                    "rationale": "The CFO explicitly requested rate justification before approving premium candidates.",
-                    "evidence_indexes": [1, 5, 6],
-                    "business_metric": "Improve approval speed while keeping rate variance defensible.",
-                },
-                {
-                    "title": "Schedule executive renewal-risk check-in",
-                    "action": "Book a 20-minute call with Maya Rao to confirm coverage plan, replacement guarantee, and escalation owner.",
-                    "category": "Relationship",
-                    "priority": "high",
-                    "owner_role": "Client Partner",
-                    "due_date": "Next 48 hours",
-                    "confidence": 82,
-                    "rationale": "The account is strategic, renewal is within 90 days, and competitor pressure is visible.",
-                    "evidence_indexes": [1, 3, 6],
-                    "business_metric": "Protect renewal and increase stakeholder trust.",
-                },
-            ]
-        }
+        fallback = {"recommendations": self._fallback_recommendations(state["account_id"])}
         generated = self.llm.complete_json(
             system="You create staffing next best actions. Return strict JSON: {\"recommendations\": [...]}. Each item needs title, action, category, priority, owner_role, due_date, confidence, rationale, evidence_indexes, business_metric.",
             user=json.dumps({"analysis": state.get("analysis", {}), "evidence": evidence_payload}, indent=2),
@@ -296,3 +243,164 @@ class Flow360Workflow:
         if selected:
             return selected[:3]
         return evidence[:3]
+
+    @staticmethod
+    def _account_domain(account_id: str) -> str:
+        for account in DEMO_ACCOUNTS:
+            if account["id"] == account_id:
+                return account["domain"]
+        return "healthcare_staffing"
+
+    def _fallback_analysis(self, account_id: str) -> dict[str, Any]:
+        domain = self._account_domain(account_id)
+        if domain == "saas_customer_success":
+            return {
+                "account_health": "red: renewal at risk because reliability and adoption issues are unresolved",
+                "urgency_score": 88,
+                "risks": [
+                    "API latency incidents are affecting payment confirmation during settlement windows.",
+                    "Reconciliation adoption is weak in key operations teams.",
+                    "A competitor is positioning around lower pricing and dedicated reliability support.",
+                ],
+                "opportunities": [
+                    "Create an executive save plan with RCA, prevention milestones, and named owners.",
+                    "Rebuild sponsor trust with weekly steering updates.",
+                ],
+                "missing_information": [
+                    "Final latency SLO accepted by Vikram Sethi.",
+                    "Product owner commitment for webhook retry investigation.",
+                    "Adoption baseline for reconciliation users by location.",
+                ],
+                "decision_points": [
+                    "Whether to offer a named incident commander for 30 days.",
+                    "Whether to include commercial concession only after reliability milestones are accepted.",
+                ],
+            }
+        if domain == "energy_field_service":
+            return {
+                "account_health": "amber: SLA and safety risk rising during monsoon operations",
+                "urgency_score": 78,
+                "risks": [
+                    "Transformer T-42 crossed heat thresholds and needs dispatch before peak load.",
+                    "Assigned technicians have expired safety refresher certificates.",
+                    "Hospital feeder SLA history increases communication risk.",
+                ],
+                "opportunities": [
+                    "Prevent repeat SLA breach by pre-checking technician certification before dispatch.",
+                    "Improve trust with two-hour ETA updates for critical feeders.",
+                ],
+                "missing_information": [
+                    "Certified backup crew availability.",
+                    "Latest site permit and weather clearance.",
+                    "Customer-approved ETA communication owner.",
+                ],
+                "decision_points": [
+                    "Dispatch alternate certified technicians or request written safety exception.",
+                    "Escalate customer update before 3 PM or wait for final crew assignment.",
+                ],
+            }
+        return {
+            "account_health": "amber: renewal-sensitive with active SLA breach risk",
+            "urgency_score": 91,
+            "risks": [
+                "Critical clinical starts are within 4 days while license verification is unresolved.",
+                "Rohan Kulkarni needs premium-rate justification before approval.",
+                "Prior credentialing misses increased renewal risk.",
+            ],
+            "opportunities": [
+                "Win executive trust by sending a transparent cost-risk brief.",
+                "Differentiate with a replacement guarantee tied to verified candidates.",
+            ],
+            "missing_information": [
+                "Final license verification completion time for Ananya Sharma.",
+                "CFO approval threshold for premium candidates.",
+                "Replacement guarantee terms acceptable to Kavya Raman.",
+            ],
+            "decision_points": [
+                "Show Ananya Sharma as conditional or wait for license verification.",
+                "Whether to include premium candidates in the 4 PM shortlist.",
+            ],
+        }
+
+    def _fallback_recommendations(self, account_id: str) -> list[dict[str, Any]]:
+        domain = self._account_domain(account_id)
+        if domain == "saas_customer_success":
+            return [
+                {
+                    "title": "Create 30-day API reliability save plan",
+                    "action": "Send Suhani Bansal and Vikram Sethi an executive save plan with latency RCA, prevention milestones, incident commander, and weekly steering updates.",
+                    "category": "Renewal Save",
+                    "priority": "critical",
+                    "owner_role": "Customer Success Manager",
+                    "due_date": "Next 24 hours",
+                    "confidence": 88,
+                    "rationale": "Renewal is red-health and the customer explicitly tied renewal confidence to API reliability recovery.",
+                    "evidence_indexes": [0, 1, 2],
+                    "business_metric": "Protect INR 9.6 Cr ARR and reduce renewal downgrade risk.",
+                },
+                {
+                    "title": "Schedule reconciliation adoption workshop",
+                    "action": "Book enablement with Chennai and Gurugram operations teams focused on exception matching and reconciliation trust gaps.",
+                    "category": "Adoption",
+                    "priority": "high",
+                    "owner_role": "Solutions Consultant",
+                    "due_date": "This week",
+                    "confidence": 81,
+                    "rationale": "Low reconciliation adoption is one of the renewal objections.",
+                    "evidence_indexes": [1, 3],
+                    "business_metric": "Increase purchased-module adoption before renewal committee.",
+                },
+            ]
+        if domain == "energy_field_service":
+            return [
+                {
+                    "title": "Replace uncertified technicians before T-42 dispatch",
+                    "action": "Assign certified backup technicians or get written safety approval before dispatching the transformer maintenance crew.",
+                    "category": "Safety",
+                    "priority": "critical",
+                    "owner_role": "Field Operations Manager",
+                    "due_date": "Today, 1:00 PM",
+                    "confidence": 87,
+                    "rationale": "Safety refresher status is expired and transformer work cannot start without compliance clearance.",
+                    "evidence_indexes": [0, 2, 3],
+                    "business_metric": "Avoid safety breach and prevent repeat SLA delay.",
+                },
+                {
+                    "title": "Send hospital feeder ETA update before 3 PM",
+                    "action": "Send Harish Nambiar a customer-facing ETA update with site risk, crew status, and backup plan.",
+                    "category": "Customer Communication",
+                    "priority": "high",
+                    "owner_role": "Dispatch Lead",
+                    "due_date": "Today, 3:00 PM",
+                    "confidence": 82,
+                    "rationale": "Prior SLA breach was worsened by communication gaps during feeder restoration.",
+                    "evidence_indexes": [1, 3],
+                    "business_metric": "Improve trust while restoration is pending.",
+                },
+            ]
+        return [
+            {
+                "title": "Block Ananya Sharma from final shortlist until license clears",
+                "action": "Ask Meera Nair to verify Ananya Sharma's Karnataka nursing license before 2:30 PM and mark her conditional in the 4 PM shortlist.",
+                "category": "Credentialing",
+                "priority": "critical",
+                "owner_role": "Compliance Lead",
+                "due_date": "Today, 2:30 PM",
+                "confidence": 91,
+                "rationale": "The role starts within 4 days, license verification is pending, and Aarogya already had a renewal-risk incident from late license checks.",
+                "evidence_indexes": [0, 2, 4],
+                "business_metric": "Reduce SLA breach risk and protect renewal confidence.",
+            },
+            {
+                "title": "Send premium-rate approval brief to Rohan Kulkarni",
+                "action": "Prepare a one-page cost-risk brief comparing vacancy cost, overtime exposure, patient-care risk, and backup candidate availability.",
+                "category": "Commercial",
+                "priority": "high",
+                "owner_role": "Account Manager",
+                "due_date": "Friday, 11:00 AM",
+                "confidence": 86,
+                "rationale": "Rohan will not approve premium candidates above threshold without quantified business justification.",
+                "evidence_indexes": [1, 5, 6],
+                "business_metric": "Improve approval speed while keeping rate variance defensible.",
+            },
+        ]

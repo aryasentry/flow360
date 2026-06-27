@@ -54,7 +54,7 @@ function DashboardPreview() {
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-xs uppercase text-cyan-200/70">Analytics Agent</p>
-              <h3 className="mt-1 text-xl font-semibold text-white">Northstar Health NBA</h3>
+              <h3 className="mt-1 text-xl font-semibold text-white">Aarogya Health NBA</h3>
             </div>
             <div className="hidden h-9 w-52 items-center rounded-md border border-white/10 bg-white/10 px-3 text-xs text-white/45 md:flex">
               Search context
