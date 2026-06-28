@@ -17,6 +17,7 @@ import {
   Bot,
   BriefcaseBusiness,
   Building2,
+  CalendarDays,
   Check,
   ChevronRight,
   ClipboardList,
@@ -61,6 +62,7 @@ import type {
 } from "@/lib/types";
 
 type ActiveView =
+  | "today"
   | "accounts"
   | "dashboard"
   | "crm"
@@ -108,6 +110,20 @@ type MemoryLedgerItem = {
   why: string;
   evidence: string;
   rule: string;
+};
+
+type DailyBrief = {
+  account: AccountSummary;
+  score: number;
+  level: "Critical" | "High" | "Watch" | "Stable";
+  nextView: ActiveView;
+  nextLabel: string;
+  actionTitle: string;
+  reason: string;
+  changed: string;
+  missing: string;
+  sourceCounts: Record<SourceCollection, number>;
+  signals: string[];
 };
 
 const priorityClass: Record<Recommendation["priority"], string> = {
@@ -223,6 +239,7 @@ function sourceTypeFor(collection: SourceCollection) {
 }
 
 const viewLabels: Record<ActiveView, string> = {
+  today: "Today",
   accounts: "Accounts",
   dashboard: "Dashboard",
   crm: "CRM",
@@ -459,12 +476,95 @@ function buildMemoryLedgerItems(
   });
 }
 
+function latestSource(sources: Record<SourceCollection, SourceEntry[]>) {
+  const entries = Object.values(sources)
+    .flat()
+    .filter(Boolean);
+  return entries.sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))[0] ?? null;
+}
+
+function buildDailyBrief(data: DashboardState): DailyBrief {
+  const account = data.account;
+  const sources = data.sources ?? emptySources();
+  const sourceCounts = Object.fromEntries(
+    Object.entries(sources).map(([key, value]) => [key, value.length]),
+  ) as Record<SourceCollection, number>;
+  const topRecommendation = data.recommendations[0];
+  const candidateBlockers = data.candidates.filter(
+    (candidate) => candidate.missing_items.length > 0 || candidate.credentialing_status.toLowerCase().includes("pending"),
+  );
+  const latest = latestSource(sources);
+  const healthScore = account.health === "red" ? 38 : account.health === "amber" ? 26 : 12;
+  const priorityScore = topRecommendation
+    ? { critical: 34, high: 26, medium: 16, low: 8 }[topRecommendation.priority]
+    : 6;
+  const blockerScore = candidateBlockers.length ? Math.min(22, 8 + candidateBlockers.length * 4) : 0;
+  const renewalScore = account.metrics.some((metric) => /renewal|exposure|arr|sla|risk/i.test(`${metric.label} ${metric.value}`)) ? 10 : 0;
+  const missingScore =
+    (sourceCounts.crm < 2 ? 5 : 0) +
+    (sourceCounts.interactions < 2 ? 6 : 0) +
+    (sourceCounts.knowledge < 1 ? 6 : 0) +
+    (sourceCounts.risks < 1 ? 6 : 0);
+  const score = Math.min(99, healthScore + priorityScore + blockerScore + renewalScore + missingScore);
+  const level: DailyBrief["level"] = score >= 82 ? "Critical" : score >= 66 ? "High" : score >= 46 ? "Watch" : "Stable";
+
+  let nextView: ActiveView = "dashboard";
+  let nextLabel = "Open Dashboard";
+  let missing = "No major context gaps. Review the top recommendation and decide.";
+  if (account.supports_candidates && candidateBlockers.length) {
+    nextView = "candidates";
+    nextLabel = "Open Candidates/BGV";
+    missing = `${candidateBlockers.length} candidate blocker${candidateBlockers.length > 1 ? "s" : ""} need verification before safe execution.`;
+  } else if (sourceCounts.interactions < 2) {
+    nextView = "interactions";
+    nextLabel = "Add Meeting/Mail";
+    missing = "Latest customer conversation is thin; add meeting notes or mail before trusting a new plan.";
+  } else if (sourceCounts.risks < 1 || account.health === "red") {
+    nextView = "risks";
+    nextLabel = "Open Risks";
+    missing = account.health === "red" ? "Risk is high; confirm current RCA, owner, and customer impact." : "No risk/RCA context is connected yet.";
+  } else if (sourceCounts.crm < 2) {
+    nextView = "crm";
+    nextLabel = "Open CRM";
+    missing = "Add stakeholder, renewal, owner, or deal context to improve recommendations.";
+  }
+
+  const changed = latest
+    ? `${latest.title} was the latest connected source from ${titleCase(latest.collection === "interactions" ? "meetings_mail" : latest.collection)}.`
+    : "No new source entry is connected yet.";
+  const actionTitle = topRecommendation?.title ?? "Capture missing context before running the planner";
+  const reason = topRecommendation?.rationale ?? account.description;
+  const signals = [
+    `${Object.values(sourceCounts).reduce((total, count) => total + count, 0)} source entries connected`,
+    `${data.memory.length} memory cards available`,
+    topRecommendation ? `${topRecommendation.priority} priority recommendation` : "planner not run yet",
+    candidateBlockers.length ? `${candidateBlockers.length} candidate blocker${candidateBlockers.length > 1 ? "s" : ""}` : `${account.health} account health`,
+  ];
+
+  return {
+    account,
+    score,
+    level,
+    nextView,
+    nextLabel,
+    actionTitle,
+    reason,
+    changed,
+    missing,
+    sourceCounts,
+    signals,
+  };
+}
+
 export function FlowDashboard() {
   const [state, setState] = useState<DashboardState>(fallbackDashboardState);
   const [accountId, setAccountId] = useState(fallbackDashboardState.account.id);
-  const [activeView, setActiveView] = useState<ActiveView>("accounts");
+  const [activeView, setActiveView] = useState<ActiveView>("today");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [guideCollapsed, setGuideCollapsed] = useState(true);
+  const [dailyStates, setDailyStates] = useState<Record<string, DashboardState>>({
+    [fallbackDashboardState.account.id]: fallbackDashboardState,
+  });
   const [run, setRun] = useState<AgentRunResult | null>(null);
   const [selected, setSelected] = useState<Recommendation | null>(fallbackDashboardState.recommendations[0] ?? null);
   const [interaction, setInteraction] = useState(fallbackDashboardState.demoInteraction);
@@ -491,6 +591,7 @@ export function FlowDashboard() {
   useEffect(() => {
     getDashboardState(accountId).then((data) => {
       setState(data);
+      setDailyStates((current) => ({ ...current, [data.account.id]: data }));
       setInteraction(data.demoInteraction);
       setRun(null);
       const firstRec = data.recommendations[0] ?? null;
@@ -499,6 +600,20 @@ export function FlowDashboard() {
       setSelectedLedgerId(null);
     });
   }, [accountId]);
+
+  const accountIds = useMemo(() => state.accounts.map((item) => item.id).join("|"), [state.accounts]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const accounts = state.accounts;
+    Promise.all(accounts.map((item) => getDashboardState(item.id))).then((items) => {
+      if (cancelled) return;
+      setDailyStates(Object.fromEntries(items.map((item) => [item.account.id, item])));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountIds, state.accounts]);
 
   const account = state.account;
   const sources = state.sources ?? emptySources();
@@ -524,6 +639,7 @@ export function FlowDashboard() {
 
   const navItems = useMemo(() => {
     const base: Array<{ id: ActiveView; label: string; icon: typeof BriefcaseBusiness }> = [
+      { id: "today", label: "Today", icon: CalendarDays },
       { id: "accounts", label: "Accounts", icon: Building2 },
       { id: "dashboard", label: "Dashboard", icon: ClipboardList },
       { id: "crm", label: "CRM", icon: BriefcaseBusiness },
@@ -552,6 +668,11 @@ export function FlowDashboard() {
   function chooseAccount(next: AccountSummary) {
     setAccountId(next.id);
     setActiveView("dashboard");
+  }
+
+  function openAccountView(next: AccountSummary, view: ActiveView = "dashboard") {
+    setAccountId(next.id);
+    setActiveView(view);
   }
 
   async function handleRunPlanner() {
@@ -760,8 +881,9 @@ export function FlowDashboard() {
         current_screen: viewLabels[activeView],
         available_navigation: navItems.map((item) => item.label),
         visible_buttons: [
-          "Switch Account",
-          "Run Planner",
+          activeView === "today" ? "Accounts" : "Switch Account",
+          activeView === "today" ? "Current Dashboard" : "Run Planner",
+          ...(activeView === "today" ? ["Open top priority", "Open account next step"] : []),
           ...(activeView === "dashboard" ? ["Approve selected action", "Reject selected action"] : []),
           ...(activeView === "execution" ? ["Approve and generate artifacts", "Copy artifact", "Open Memory Ledger"] : []),
           ...(activeView === "crm" || activeView === "interactions" || activeView === "knowledge" || activeView === "risks" || activeView === "candidates"
@@ -770,7 +892,9 @@ export function FlowDashboard() {
           ...(activeView === "memory" ? ["Open Memory Ledger", "Inspect trust state"] : []),
         ],
         visible_sections:
-          activeView === "dashboard"
+          activeView === "today"
+            ? ["Daily Command Brief", "Ranked Account Briefs", "One-Click Work Queue", "Automation Logic"]
+            : activeView === "dashboard"
             ? ["Metrics", "Recommendation Inbox", "Agent Decision Flow", "Risk Trend"]
             : activeView === "memory"
               ? ["Memory Graph", "Memory Sources", "Memory Ledger", "Memory Cards", "Evidence For Selected Action"]
@@ -810,6 +934,183 @@ export function FlowDashboard() {
     });
     setGuideMessages((current) => [...current, { role: "assistant", content: response.answer }]);
     setIsGuideLoading(false);
+  }
+
+  function todayView() {
+    const briefs = state.accounts
+      .map(
+        (item) =>
+          dailyStates[item.id] ?? {
+            ...fallbackDashboardState,
+            accounts: state.accounts,
+            account: item,
+            recommendations: [],
+            memory: [],
+            sources: emptySources(),
+            candidates: [],
+            metrics: item.metrics,
+            riskTrend: item.risk_trend,
+            demoInteraction: item.description,
+            mode: state.mode,
+          },
+      )
+      .map(buildDailyBrief)
+      .sort((a, b) => b.score - a.score);
+    const topBrief = briefs[0];
+    const openGaps = briefs.filter((brief) => !brief.missing.startsWith("No major")).length;
+    const urgentActions = briefs.filter((brief) => brief.level === "Critical" || brief.level === "High").length;
+
+    return (
+      <div className="space-y-4">
+        <section className="overflow-hidden rounded-lg border border-black/10 bg-[#101319] text-white shadow-sm">
+          <div
+            className="relative p-5 md:p-6"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle at 16% 0%, rgba(34,211,238,0.2), transparent 30%), radial-gradient(circle at 88% 12%, rgba(99,102,241,0.22), transparent 28%), linear-gradient(135deg, rgba(255,255,255,0.08), transparent)",
+            }}
+          >
+            <div className="relative z-10 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase text-cyan-200">Daily Command Brief</p>
+                <h2 className="mt-2 max-w-3xl text-3xl font-semibold tracking-normal md:text-4xl">
+                  Flow360 scanned every account. Start with the highest business risk.
+                </h2>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-white/62">
+                  Ranked by account health, urgent recommendations, missing context, source freshness, and operational blockers.
+                </p>
+              </div>
+              <button
+                onClick={() => topBrief && openAccountView(topBrief.account, topBrief.nextView)}
+                className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md bg-white px-4 text-sm font-semibold text-black hover:bg-white/90"
+              >
+                Open top priority
+                <ChevronRight size={17} />
+              </button>
+            </div>
+            <div className="relative z-10 mt-6 grid gap-3 md:grid-cols-3">
+              {[
+                ["Accounts scanned", String(briefs.length), "same reusable workflow"],
+                ["Needs attention", String(urgentActions), "critical/high briefs"],
+                ["Context gaps", String(openGaps), "missing data before confidence rises"],
+              ].map(([label, value, detail]) => (
+                <div key={label} className="rounded-lg border border-white/10 bg-white/[0.07] p-4 backdrop-blur">
+                  <p className="text-xs font-medium uppercase text-white/42">{label}</p>
+                  <p className="mt-2 text-2xl font-semibold">{value}</p>
+                  <p className="mt-1 text-xs text-white/46">{detail}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <section className="space-y-3">
+            {briefs.map((brief, index) => (
+              <article key={brief.account.id} className="rounded-lg border border-black/10 bg-white p-4 shadow-sm">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-md bg-black text-xs font-bold text-white">
+                        {index + 1}
+                      </span>
+                      <p className="text-xs font-semibold uppercase text-indigo-700">{brief.account.segment}</p>
+                      <span
+                        className={`rounded-md border px-2 py-1 text-xs font-semibold ${
+                          brief.level === "Critical"
+                            ? "border-rose-200 bg-rose-50 text-rose-700"
+                            : brief.level === "High"
+                              ? "border-amber-200 bg-amber-50 text-amber-700"
+                              : brief.level === "Watch"
+                                ? "border-sky-200 bg-sky-50 text-sky-700"
+                                : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        }`}
+                      >
+                        {brief.level}
+                      </span>
+                    </div>
+                    <h3 className="mt-3 text-xl font-semibold tracking-normal">{brief.account.name}</h3>
+                    <p className="mt-2 text-sm leading-6 text-black/60">{brief.actionTitle}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-xs font-semibold uppercase text-black/42">Focus score</p>
+                      <p className="text-3xl font-semibold">{brief.score}</p>
+                    </div>
+                    <button
+                      onClick={() => openAccountView(brief.account, brief.nextView)}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-black px-3 text-sm font-semibold text-white hover:bg-black/85"
+                    >
+                      {brief.nextLabel}
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                  <div className="rounded-md bg-[#f7f6f3] p-3">
+                    <p className="text-xs font-semibold uppercase text-black/42">Why today</p>
+                    <p className="mt-2 text-sm leading-6 text-black/65">{brief.reason}</p>
+                  </div>
+                  <div className="rounded-md bg-[#f7f6f3] p-3">
+                    <p className="text-xs font-semibold uppercase text-black/42">Changed recently</p>
+                    <p className="mt-2 text-sm leading-6 text-black/65">{brief.changed}</p>
+                  </div>
+                  <div className="rounded-md bg-[#f7f6f3] p-3">
+                    <p className="text-xs font-semibold uppercase text-black/42">Missing before confidence rises</p>
+                    <p className="mt-2 text-sm leading-6 text-black/65">{brief.missing}</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {brief.signals.map((signal) => (
+                    <span key={signal} className="rounded-md bg-white px-2 py-1 text-xs font-medium text-black/55 ring-1 ring-black/8">
+                      {signal}
+                    </span>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </section>
+
+          <aside className="space-y-3">
+            <section className="rounded-lg border border-black/10 bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Sparkles size={18} className="text-indigo-600" />
+                <h2 className="text-lg font-semibold tracking-normal">One-Click Work Queue</h2>
+              </div>
+              <div className="mt-3 space-y-2">
+                {briefs.slice(0, 4).map((brief) => (
+                  <button
+                    key={brief.account.id}
+                    onClick={() => openAccountView(brief.account, brief.nextView)}
+                    className="flex w-full items-center justify-between gap-3 rounded-md border border-black/10 bg-[#fbfaf8] p-3 text-left hover:bg-black/[0.035]"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold">{brief.account.name}</span>
+                      <span className="mt-1 block truncate text-xs text-black/52">{brief.nextLabel}</span>
+                    </span>
+                    <ChevronRight size={16} className="shrink-0 text-black/38" />
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-black/10 bg-[#111111] p-4 text-white shadow-sm">
+              <div className="flex items-center gap-2">
+                <Activity size={18} className="text-cyan-300" />
+                <h2 className="text-lg font-semibold tracking-normal">Automation Logic</h2>
+              </div>
+              <div className="mt-3 space-y-3 text-sm leading-6 text-white/62">
+                <p>Flow360 ranks work before the user asks a question.</p>
+                <p>It checks account health, recommendation severity, missing sources, memory coverage, and candidate blockers.</p>
+                <p>The user gets one next click instead of hunting across CRM, meetings, risks, memory, and planner screens.</p>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
+    );
   }
 
   function accountCards() {
@@ -1847,6 +2148,7 @@ export function FlowDashboard() {
 
   function activeContent() {
     if (activeView === "accounts") return accountCards();
+    if (activeView === "today") return todayView();
     if (activeView === "dashboard") return dashboardView();
     if (activeView === "crm") return sourcePage("crm");
     if (activeView === "interactions") return sourcePage("interactions");
@@ -1904,9 +2206,17 @@ export function FlowDashboard() {
           <header className="border-b border-black/10 bg-white/86 px-4 py-3 backdrop-blur md:px-5">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div className="min-w-0">
-                <p className="text-sm font-medium text-indigo-700">{account.segment}</p>
-                <h1 className="mt-0.5 text-2xl font-semibold tracking-normal text-black md:text-3xl">{account.name}</h1>
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-black/58">{account.description}</p>
+                <p className="text-sm font-medium text-indigo-700">
+                  {activeView === "today" ? "All accounts" : account.segment}
+                </p>
+                <h1 className="mt-0.5 text-2xl font-semibold tracking-normal text-black md:text-3xl">
+                  {activeView === "today" ? "Flow360 Daily Command Brief" : account.name}
+                </h1>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-black/58">
+                  {activeView === "today"
+                    ? "A ranked morning briefing that tells the team which client needs attention, what changed, what is missing, and where to click next."
+                    : account.description}
+                </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -1914,14 +2224,20 @@ export function FlowDashboard() {
                   className="inline-flex h-10 items-center gap-2 rounded-md border border-black/10 bg-white px-4 text-sm font-semibold hover:bg-black/5"
                 >
                   <Building2 size={16} />
-                  Switch Account
+                  {activeView === "today" ? "Accounts" : "Switch Account"}
                 </button>
                 <button
-                  onClick={handleRunPlanner}
+                  onClick={activeView === "today" ? () => setActiveView("dashboard") : handleRunPlanner}
                   className="inline-flex h-10 items-center gap-2 rounded-md bg-black px-4 text-sm font-semibold text-white hover:bg-black/85"
                 >
-                  {isRunning ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                  Run Planner
+                  {activeView === "today" ? (
+                    <ClipboardList size={16} />
+                  ) : isRunning ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={16} />
+                  )}
+                  {activeView === "today" ? "Current Dashboard" : "Run Planner"}
                 </button>
               </div>
             </div>

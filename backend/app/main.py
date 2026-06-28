@@ -280,6 +280,7 @@ Answer in 2-4 short sentences. Use exact labels from Visible UI context for next
 
 def _guide_suggestions(current_view: str) -> list[str]:
     by_view = {
+        "today": ["Open top priority", "Review context gaps", "Open account next step"],
         "accounts": ["Switch Account", "Open Dashboard", "Run Planner"],
         "dashboard": ["Review selected action", "Check evidence", "Run Planner"],
         "crm": ["Load sample", "Save and ingest to memory", "Run Planner"],
@@ -337,6 +338,11 @@ def _screen_grounded_guide(payload: GuideChatRequest, account_name: str, visible
             f"You are on {screen}. This page is for adding or reviewing source data; it currently has {count} connected entries. "
             "Use Load sample or paste a real-looking entry, then click Save and ingest to memory. "
             "Nothing becomes a new plan until you click Run Planner."
+        )
+    if payload.current_view == "today":
+        return (
+            "You are on Today, the all-account Daily Command Brief. Start with the highest ranked account, read Why today, Changed recently, and Missing before confidence rises, then click that card's next-step button. "
+            "This page is for prioritizing work before opening a specific account screen."
         )
     if payload.current_view == "memory":
         total = sum(int(value) for value in source_counts.values()) if isinstance(source_counts, dict) else 0
