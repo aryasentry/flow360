@@ -34,6 +34,7 @@ class PlatformStore:
         self.seed_demo_candidates()
         self.seed_demo_memory()
         self.seed_demo_documents()
+        self.backfill_source_mirrors()
 
     @property
     def live_mode(self) -> bool:
@@ -83,35 +84,288 @@ class PlatformStore:
                         "title": doc["title"],
                         "source_type": doc["source_type"],
                         "content": chunk,
-                        "embedding": self.embeddings.embed(chunk),
+                        "embedding": self.embeddings.embed(chunk, use_ollama=False),
                         "metadata": doc.get("metadata", {}),
                     }
                 )
 
     def list_accounts(self) -> list[AccountSummary]:
         demo_ids = {account["id"] for account in DEMO_ACCOUNTS}
-        accounts_by_id = {account["id"]: account for account in DEMO_ACCOUNTS}
+        accounts_by_id = {**self._accounts}
         if self.client:
             try:
                 response = self.client.table("accounts").select("*").order("name").execute()
                 if response.data:
                     for row in response.data:
-                        if row.get("id") in demo_ids:
-                            accounts_by_id[row["id"]] = row
+                        accounts_by_id[row["id"]] = row
             except Exception:
                 pass
-        return [self._account_from_row(accounts_by_id[account["id"]]) for account in DEMO_ACCOUNTS]
+        demo_accounts = [self._account_from_row(accounts_by_id[account["id"]]) for account in DEMO_ACCOUNTS]
+        custom_accounts = [
+            self._account_from_row(row)
+            for account_id, row in sorted(accounts_by_id.items(), key=lambda item: item[1].get("name", ""))
+            if account_id not in demo_ids
+        ]
+        return [*demo_accounts, *custom_accounts]
 
     def get_account(self, account_id: str) -> AccountSummary:
-        demo_ids = {account["id"] for account in DEMO_ACCOUNTS}
         if self.client:
             try:
                 response = self.client.table("accounts").select("*").eq("id", account_id).single().execute()
-                if response.data and response.data.get("id") in demo_ids:
+                if response.data:
                     return self._account_from_row(response.data)
             except Exception:
                 pass
         return self._account_from_row(self._accounts.get(account_id) or self._accounts[DEMO_ACCOUNT_ID])
+
+    def create_account_from_blueprint(
+        self,
+        *,
+        name: str,
+        segment: str,
+        domain: str,
+        description: str,
+        primary_user: str,
+        supports_candidates: bool,
+        account_text: str,
+        selections: dict[str, list[str]],
+    ) -> dict[str, Any]:
+        slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:38] or "custom-account"
+        account_id = f"acct-{slug}-{uuid.uuid4().hex[:6]}"
+        source_count = sum(len(values) for values in selections.values())
+        metadata = {
+            "created_by": "domain_blueprint_studio",
+            "source_types": selections.get("source_types", []),
+            "memory_types": selections.get("memory_types", []),
+            "business_rules": selections.get("business_rules", []),
+            "recommendation_categories": selections.get("recommendation_categories", []),
+            "success_metrics": selections.get("success_metrics", []),
+            "agents_enabled": selections.get("agents_enabled", []),
+            "metrics": [
+                {"label": "Blueprint coverage", "value": str(source_count), "delta": "selected configuration items"},
+                {"label": "Memory readiness", "value": "New", "delta": "initial operating brief stored"},
+                {"label": "Decision status", "value": "Setup", "delta": "run planner after sources are added"},
+                {"label": "Reusable workflow", "value": "On", "delta": "same planner and memory stack"},
+            ],
+            "risk_trend": [
+                {"day": "Setup", "risk": 42, "confidence": 58},
+                {"day": "Sources", "risk": 48, "confidence": 64},
+                {"day": "Planner", "risk": 54, "confidence": 70},
+            ],
+        }
+        row = {
+            "id": account_id,
+            "name": name,
+            "segment": segment,
+            "domain": domain,
+            "health": "new",
+            "renewal_date": None,
+            "description": description,
+            "supports_candidates": supports_candidates,
+            "primary_user": primary_user,
+            "metadata": metadata,
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        self._accounts[account_id] = row
+        if self.client:
+            try:
+                self.client.table("accounts").upsert(row).execute()
+            except Exception:
+                pass
+
+        brief = (
+            f"Account setup context: {account_text}\n\n"
+            f"Selected source types: {', '.join(selections.get('source_types', [])) or 'Not selected'}\n"
+            f"Selected memory types: {', '.join(selections.get('memory_types', [])) or 'Not selected'}\n"
+            f"Selected business rules: {', '.join(selections.get('business_rules', [])) or 'Not selected'}\n"
+            f"Recommendation categories: {', '.join(selections.get('recommendation_categories', [])) or 'Not selected'}\n"
+            f"Success metrics: {', '.join(selections.get('success_metrics', [])) or 'Not selected'}\n"
+            f"Agents enabled: {', '.join(selections.get('agents_enabled', [])) or 'Not selected'}"
+        )
+        source = self.ingest_source_entry(
+            account_id=account_id,
+            collection="crm",
+            source_type="blueprint_account_brief",
+            title=f"Blueprint Operating Brief - {name}",
+            content=brief,
+            fields={"origin": "domain_blueprint_studio", "primary_user": primary_user, "segment": segment},
+        )
+        self._write_blueprint_business_rules(account_id, domain, selections)
+        return {"account": self._account_from_row(row).model_dump(mode="json"), "source": source}
+
+    def _write_blueprint_business_rules(self, account_id: str, domain: str, selections: dict[str, list[str]]) -> None:
+        if not self.client:
+            return
+        rows = [
+            {
+                "id": f"rule-{account_id}-{index}",
+                "name": rule,
+                "domain": domain,
+                "rule_type": "blueprint_rule",
+                "condition": "Applies when current account context matches the selected blueprint rule.",
+                "action": rule,
+                "severity": "medium",
+                "metadata": {"account_id": account_id, "origin": "domain_blueprint_studio"},
+            }
+            for index, rule in enumerate(selections.get("business_rules", [])[:12], start=1)
+        ]
+        if rows:
+            try:
+                self.client.table("business_rules").upsert(rows).execute()
+            except Exception:
+                pass
+
+    def _mirror_source_entry(self, entry: dict[str, Any]) -> None:
+        if not self.client:
+            return
+        collection = entry.get("collection")
+        if collection == "interactions":
+            self._mirror_interaction(entry)
+        elif collection == "crm":
+            self._mirror_crm(entry)
+        elif collection == "knowledge":
+            self._mirror_business_rule(entry)
+        elif collection == "candidates":
+            self._mirror_candidate(entry)
+
+    def _mirror_interaction(self, entry: dict[str, Any]) -> None:
+        try:
+            self.client.table("interactions").upsert(
+                {
+                    "id": f"int-{entry['id']}",
+                    "account_id": entry["account_id"],
+                    "title": entry["title"],
+                    "source_type": entry["source_type"],
+                    "content": entry["content"],
+                    "metadata": {**entry.get("fields", {}), "source_entry_id": entry["id"]},
+                    "created_at": entry["created_at"],
+                }
+            ).execute()
+        except Exception:
+            pass
+
+    def _mirror_crm(self, entry: dict[str, Any]) -> None:
+        fields = entry.get("fields", {}) or {}
+        contact_roles = {
+            "client_owner": "Client Owner",
+            "decision_maker": "Decision Maker",
+            "executive_sponsor": "Executive Sponsor",
+            "economic_buyer": "Economic Buyer",
+            "cfo": "CFO",
+            "compliance_lead": "Compliance Lead",
+            "hiring_manager": "Hiring Manager",
+            "sponsor": "Sponsor",
+            "technical_owner": "Technical Owner",
+            "operations_head": "Operations Head",
+            "safety_owner": "Safety Owner",
+            "owner": "Owner",
+            "primary_user": "Primary User",
+        }
+        contacts = []
+        for key, role in contact_roles.items():
+            name = str(fields.get(key, "")).strip()
+            if not name:
+                continue
+            slug = re.sub(r"[^a-z0-9]+", "-", f"{key}-{name}".lower()).strip("-")[:42]
+            contacts.append(
+                {
+                    "id": f"contact-{entry['account_id']}-{slug}",
+                    "account_id": entry["account_id"],
+                    "name": name,
+                    "role": role,
+                    "influence": str(fields.get("influence", "")) or None,
+                    "sentiment": str(fields.get("sentiment", "")) or None,
+                    "metadata": {"source_entry_id": entry["id"], "source_title": entry["title"]},
+                }
+            )
+        if contacts:
+            try:
+                self.client.table("contacts").upsert(contacts).execute()
+            except Exception:
+                pass
+
+        title = str(fields.get("job_title") or fields.get("role") or fields.get("requirement") or "").strip()
+        if title:
+            try:
+                self.client.table("job_reqs").upsert(
+                    {
+                        "id": f"job-{entry['id']}",
+                        "account_id": entry["account_id"],
+                        "title": title,
+                        "openings": int(fields.get("openings") or 1),
+                        "start_date": self._date_or_none(fields.get("start_date")),
+                        "urgency": str(fields.get("urgency", "")) or None,
+                        "status": str(fields.get("status", "open")) or "open",
+                        "metadata": {**fields, "source_entry_id": entry["id"]},
+                    }
+                ).execute()
+            except Exception:
+                pass
+
+    def _mirror_business_rule(self, entry: dict[str, Any]) -> None:
+        fields = entry.get("fields", {}) or {}
+        try:
+            account = self.get_account(entry["account_id"])
+            self.client.table("business_rules").upsert(
+                {
+                    "id": f"rule-{entry['id']}",
+                    "name": entry["title"],
+                    "domain": account.domain,
+                    "rule_type": str(fields.get("rule_type") or entry["source_type"] or "knowledge_rule"),
+                    "condition": str(fields.get("condition") or entry["content"][:620]),
+                    "action": str(fields.get("action") or entry["content"][:620]),
+                    "severity": str(fields.get("severity") or "medium"),
+                    "metadata": {**fields, "account_id": entry["account_id"], "source_entry_id": entry["id"]},
+                }
+            ).execute()
+        except Exception:
+            pass
+
+    def _mirror_candidate(self, entry: dict[str, Any]) -> None:
+        fields = entry.get("fields", {}) or {}
+        candidate_id = fields.get("candidate_id") or entry["id"].replace("src-", "cand-")
+        try:
+            self.client.table("candidates").upsert(
+                {
+                    "id": candidate_id,
+                    "account_id": entry["account_id"],
+                    "name": fields.get("name") or entry["title"].replace("Candidate Profile - ", ""),
+                    "role": fields.get("role") or "Candidate",
+                    "availability_date": self._date_or_none(fields.get("availability_date")),
+                    "compliance_status": fields.get("compliance_status") or fields.get("credentialing_status") or "unknown",
+                    "credentialing_status": fields.get("credentialing_status") or "unknown",
+                    "bgv_status": fields.get("bgv_status") or "not_started",
+                    "fit_score": int(fields.get("fit_score") or 70),
+                    "rate_variance_percent": float(fields.get("rate_variance_percent") or 0),
+                    "missing_items": self._as_list(fields.get("missing_items", [])),
+                    "risk_flags": self._as_list(fields.get("risk_flags", [])),
+                    "metadata": {**fields, "source_entry_id": entry["id"]},
+                }
+            ).execute()
+        except Exception:
+            pass
+
+    @staticmethod
+    def _date_or_none(value: Any) -> str | None:
+        text = str(value or "").strip()
+        return text or None
+
+    def backfill_source_mirrors(self) -> int:
+        if not self.client:
+            return 0
+        try:
+            response = self.client.table("source_entries").select("*").limit(500).execute()
+        except Exception:
+            return 0
+        mirrored = 0
+        for entry in response.data or []:
+            if not isinstance(entry, dict) or not entry.get("id"):
+                continue
+            self._source_entries[entry["id"]] = entry
+            self._mirror_source_entry(entry)
+            mirrored += 1
+        return mirrored
 
     @staticmethod
     def _account_from_row(row: dict[str, Any]) -> AccountSummary:
@@ -195,6 +449,7 @@ class PlatformStore:
         if self.client:
             try:
                 self.client.table("source_entries").upsert(entry).execute()
+                self._mirror_source_entry(entry)
             except Exception:
                 pass
 
@@ -611,6 +866,11 @@ class PlatformStore:
             "updated_at": datetime.utcnow().isoformat(),
         }
         self._memory_cards[card["id"]] = card
+        if self.client:
+            try:
+                self.client.table("memory_cards").upsert(card).execute()
+            except Exception:
+                pass
         return execution
 
     @staticmethod
@@ -753,8 +1013,29 @@ class PlatformStore:
             metadata=metadata,
         )
 
+    def _get_candidate_row(self, account_id: str, candidate_id: str) -> dict[str, Any]:
+        cached = self._candidates.get(candidate_id)
+        if cached:
+            return cached
+        if self.client:
+            try:
+                response = (
+                    self.client.table("candidates")
+                    .select("*")
+                    .eq("account_id", account_id)
+                    .eq("id", candidate_id)
+                    .single()
+                    .execute()
+                )
+                if response.data:
+                    self._candidates[candidate_id] = response.data
+                    return response.data
+            except Exception:
+                pass
+        return {"id": candidate_id, "account_id": account_id, "name": candidate_id, "role": "Candidate"}
+
     def run_bgv_check(self, account_id: str, candidate_id: str) -> BGVResult:
-        candidate = self._candidate_from_row(self._candidates.get(candidate_id) or {"id": candidate_id, "account_id": account_id, "name": candidate_id, "role": "Candidate"})
+        candidate = self._candidate_from_row(self._get_candidate_row(account_id, candidate_id))
         query = f"credentialing BGV checklist {candidate.name} {candidate.role} {candidate.credentialing_status} {candidate.bgv_status}"
         evidence = self.retrieve_context(query, account_id=account_id, top_k=4)
         missing = list(candidate.missing_items)
@@ -783,6 +1064,11 @@ class PlatformStore:
             "updated_at": datetime.utcnow().isoformat(),
         }
         self._memory_cards[card["id"]] = card
+        if self.client:
+            try:
+                self.client.table("memory_cards").upsert(card).execute()
+            except Exception:
+                pass
         return BGVResult(candidate_id=candidate_id, status=status, score=score, summary=summary, missing_items=missing, evidence=evidence)
 
     def dashboard_state(self, account_id: str = DEMO_ACCOUNT_ID) -> dict[str, Any]:

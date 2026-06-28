@@ -59,6 +59,31 @@ class AccountSummary(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class BlueprintSuggestionRequest(BaseModel):
+    account_text: str
+    domain: Literal["healthcare_staffing", "saas_customer_success", "energy_field_service"] = "healthcare_staffing"
+    blueprint_title: str = "Healthcare Staffing"
+
+
+class BlueprintOptionRequest(BaseModel):
+    account_text: str
+    domain: Literal["healthcare_staffing", "saas_customer_success", "energy_field_service"] = "healthcare_staffing"
+    category: str
+    instruction: str
+    selected_options: list[str] = Field(default_factory=list)
+
+
+class BlueprintCreateAccountRequest(BaseModel):
+    account_text: str
+    domain: Literal["healthcare_staffing", "saas_customer_success", "energy_field_service"] = "healthcare_staffing"
+    name: str
+    segment: str
+    description: str
+    primary_user: str = "Account Manager"
+    supports_candidates: bool = False
+    selections: dict[str, list[str]] = Field(default_factory=dict)
+
+
 class SourceEntry(BaseModel):
     id: str
     account_id: str

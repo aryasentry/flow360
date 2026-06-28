@@ -1,10 +1,17 @@
 import { fallbackAccounts, fallbackCandidates, fallbackDashboardState, fallbackRecommendations, fallbackRun, fallbackSources } from "./demo-data";
 import type {
+  AccountIntelligence,
+  AccountSummary,
   AgentRunResult,
   BGVResult,
+  BlueprintBuilderKey,
+  BlueprintOptionResponse,
+  BlueprintSuggestionResponse,
+  BusinessDomain,
   DashboardState,
   GuideChatResponse,
   GuideMessage,
+  IntelligenceBriefsResponse,
   MemoryQueryResponse,
   SourceCollection,
   SourceEntry,
@@ -27,13 +34,35 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function fallbackForAccount(accountId: string): DashboardState {
-  const account = fallbackAccounts.find((item) => item.id === accountId) ?? fallbackAccounts[0];
+  const account =
+    fallbackAccounts.find((item) => item.id === accountId) ??
+    ({
+      id: accountId,
+      name: "New Flow360 Account",
+      segment: "Custom account",
+      domain: "saas_customer_success",
+      health: "new",
+      renewal_date: null,
+      description: "Custom account created from Domain Blueprint Studio.",
+      supports_candidates: false,
+      primary_user: "Account Manager",
+      metadata: {},
+      metrics: [
+        { label: "Blueprint coverage", value: "New", delta: "created in studio" },
+        { label: "Memory readiness", value: "Setup", delta: "add source data" },
+        { label: "Decision status", value: "Pending", delta: "run planner" },
+        { label: "Evidence coverage", value: "0", delta: "no sources yet" },
+      ],
+      risk_trend: [],
+    } satisfies AccountSummary);
+  const isFallbackDemo = fallbackAccounts.some((item) => item.id === account.id);
   return {
     ...fallbackDashboardState,
     accounts: fallbackAccounts,
     account,
-    recommendations: fallbackRecommendations.filter((item) => item.account_id === account.id),
-    sources: fallbackSources[account.id] ?? {
+    recommendations: isFallbackDemo ? fallbackRecommendations.filter((item) => item.account_id === account.id) : [],
+    memory: isFallbackDemo ? fallbackDashboardState.memory.filter((item) => item.entity_id === account.id) : [],
+    sources: isFallbackDemo && fallbackSources[account.id] ? fallbackSources[account.id] : {
       crm: [],
       interactions: [],
       knowledge: [],
@@ -50,17 +79,20 @@ export async function getDashboardState(accountId = "acct-aarogya-health"): Prom
   try {
     const data = await request<DashboardState>(`/demo/state?account_id=${encodeURIComponent(accountId)}`);
     const fallback = fallbackForAccount(accountId);
+    const returnedAccount = data.account ?? fallback.account;
+    const isFallbackDemo = fallbackAccounts.some((item) => item.id === returnedAccount.id);
     return {
       ...fallback,
       ...data,
       accounts: data.accounts?.length ? data.accounts : fallbackAccounts,
-      recommendations: data.recommendations?.length ? data.recommendations : fallback.recommendations,
-      memory: data.memory?.length ? data.memory : fallback.memory,
+      account: returnedAccount,
+      recommendations: Array.isArray(data.recommendations) ? data.recommendations : isFallbackDemo ? fallback.recommendations : [],
+      memory: Array.isArray(data.memory) ? data.memory : isFallbackDemo ? fallback.memory : [],
       sources: data.sources ?? fallback.sources,
       candidates: data.candidates ?? fallback.candidates,
       metrics: data.metrics?.length ? data.metrics : fallback.metrics,
       riskTrend: data.riskTrend?.length ? data.riskTrend : fallback.riskTrend,
-      demoInteraction: data.demoInteraction || fallback.demoInteraction,
+      demoInteraction: data.demoInteraction || returnedAccount.description || fallback.demoInteraction,
     };
   } catch {
     return fallbackForAccount(accountId);
@@ -78,7 +110,19 @@ export async function runPlanner(accountId: string, interaction: string): Promis
       }),
     });
   } catch {
-    const account = fallbackAccounts.find((item) => item.id === accountId) ?? fallbackAccounts[0];
+    const account = fallbackAccounts.find((item) => item.id === accountId);
+    if (!account) {
+      return {
+        ...fallbackRun,
+        account_id: accountId,
+        account_name: "Custom account",
+        recommendations: [],
+        analysis: {
+          account_health: "Planner unavailable",
+          missing_information: ["Backend must be running to generate account-specific recommendations."],
+        },
+      };
+    }
     return {
       ...fallbackRun,
       account_id: account.id,
@@ -199,4 +243,114 @@ export async function guideChat(payload: {
       mode: "demo-fallback",
     };
   }
+}
+
+function fallbackIntelligence(): IntelligenceBriefsResponse {
+  const accounts: AccountIntelligence[] = fallbackAccounts.map((account) => {
+    const recommendations = fallbackRecommendations.filter((item) => item.account_id === account.id);
+    const sources = fallbackSources[account.id] ?? { crm: [], interactions: [], knowledge: [], risks: [], candidates: [] };
+    const sourceCount = Object.values(sources).reduce((total, entries) => total + entries.length, 0);
+    const evidenceCount = recommendations.reduce((total, item) => total + item.evidence.length, 0);
+    const top = recommendations[0];
+    const confidenceMetric = account.metrics.find((item) => item.label.toLowerCase().includes("memory"));
+    const confidence = Number.parseInt(confidenceMetric?.value ?? "72", 10) || 72;
+    return {
+      account_id: account.id,
+      account_name: account.name,
+      outcomes: {
+        headline: `${account.name} has ${sourceCount} connected sources and ${recommendations.length} active recommendation paths.`,
+        overall_score: Math.max(45, Math.min(94, 58 + sourceCount * 2 + Math.round(confidence / 8))),
+        confidence,
+        projected_impact: top
+          ? `Completing "${top.title}" should reduce the visible risk around ${top.business_metric.toLowerCase()}.`
+          : "Run the planner to calculate projected business impact from current memory.",
+        metrics: [
+          ["SLA breach risk reduced", account.health, top ? "Projected lower" : "N/A", top ? top.business_metric : "Run planner"],
+          ["Approval time saved", "Manual evidence chase", evidenceCount ? "Evidence packet ready" : "N/A", `${evidenceCount} evidence links`],
+          [
+            "Recommendations approved/rejected",
+            `${recommendations.filter((item) => item.status === "pending").length} pending`,
+            `${recommendations.filter((item) => item.status === "approved").length} approved / ${recommendations.filter((item) => item.status === "rejected").length} rejected`,
+            `${recommendations.length} total`,
+          ],
+          ["Evidence coverage", "Scattered", sourceCount >= 8 ? "High" : "Medium", `${sourceCount} sources`],
+          ["Memory freshness", "Unverified", `${confidence}%`, confidenceMetric?.delta ?? "memory confidence"],
+          [
+            "Candidate clearance speed",
+            account.supports_candidates ? "Credentialing queue" : "N/A",
+            account.supports_candidates ? "BGV-ready after blockers close" : "N/A",
+            account.supports_candidates ? "Candidate workflow enabled" : "No candidate workflow",
+          ],
+          ["Renewal risk movement", account.renewal_date ?? "N/A", "Lower if top actions close", "Projected"],
+        ].map(([label, before, after, delta]) => ({
+          label,
+          before,
+          after,
+          delta,
+          rationale: "Computed from the currently loaded account sources, memory, and recommendation state.",
+        })),
+      },
+      escalations: [
+        {
+          title: top?.title ?? "Confirm accountable owner",
+          owner: top?.owner_role ?? account.primary_user,
+          role: top?.owner_role ?? account.primary_user,
+          deadline: top?.due_date ?? "Next business day",
+          reason: top?.rationale ?? "The account needs an owner before the next decision can move.",
+          evidence: top?.evidence.map((item) => item.source_title).slice(0, 3) ?? ["Account memory"],
+          channel: top?.priority === "critical" || top?.priority === "high" ? "Customer email + CRM task" : "CRM task",
+          priority: top?.priority ?? "medium",
+        },
+      ],
+    };
+  });
+  return { mode: "demo-fallback", accounts };
+}
+
+export async function getIntelligenceBriefs(): Promise<IntelligenceBriefsResponse> {
+  try {
+    return await request<IntelligenceBriefsResponse>("/intelligence/briefs");
+  } catch {
+    return fallbackIntelligence();
+  }
+}
+
+export async function suggestBlueprint(payload: {
+  account_text: string;
+  domain: BusinessDomain;
+  blueprint_title: string;
+}): Promise<BlueprintSuggestionResponse> {
+  return request<BlueprintSuggestionResponse>("/blueprints/suggest", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function suggestBlueprintOptions(payload: {
+  account_text: string;
+  domain: BusinessDomain;
+  category: BlueprintBuilderKey;
+  instruction: string;
+  selected_options: string[];
+}): Promise<BlueprintOptionResponse> {
+  return request<BlueprintOptionResponse>("/blueprints/options", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createBlueprintAccount(payload: {
+  account_text: string;
+  domain: BusinessDomain;
+  name: string;
+  segment: string;
+  description: string;
+  primary_user: string;
+  supports_candidates: boolean;
+  selections: Record<BlueprintBuilderKey, string[]>;
+}): Promise<{ account: AccountSummary }> {
+  return request<{ account: AccountSummary }>("/accounts", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }

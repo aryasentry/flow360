@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, TypedDict
 
 from app.config import Settings
-from app.demo_data import DEMO_ACCOUNTS, DEMO_ACCOUNT_ID, DEMO_INTERACTION
+from app.demo_data import DEMO_ACCOUNT_ID, DEMO_INTERACTION
 from app.models import AgentRunRequest, AgentRunResult, AgentStep, Evidence, Recommendation
 from app.services.groq_client import GroqRouter
 from app.services.retrieval import EnterpriseRetriever
@@ -83,12 +83,8 @@ class Flow360Workflow:
         self.store.save_recommendations(result.recommendations)
         return result
 
-    @staticmethod
-    def _account_name(account_id: str) -> str:
-        for account in DEMO_ACCOUNTS:
-            if account["id"] == account_id:
-                return account["name"]
-        return account_id
+    def _account_name(self, account_id: str) -> str:
+        return self.store.get_account(account_id).name
 
     def _build_graph(self):
         try:
@@ -128,14 +124,22 @@ class Flow360Workflow:
         return {**state, "agent_trace": trace}
 
     def _planner_node(self, state: FlowState) -> FlowState:
+        agent_context = self._agent_context(state["account_id"])
+        metadata = self.store.get_account(state["account_id"]).metadata
+        categories = metadata.get("recommendation_categories") or ["next best action", "risk escalation", "stakeholder follow-up"]
         plan = [
             "Extract operational signals from the customer interaction.",
-            "Retrieve account history, staffing playbooks, candidate data, and policy context.",
+            "Retrieve account history, source memory, business rules, and domain playbook context.",
             "Analyze urgency, risk, missing information, and business opportunity.",
-            "Generate ranked next best actions with evidence and confidence.",
+            f"Generate ranked actions for: {', '.join(categories[:4])}.",
             "Prepare memory updates after human review.",
         ]
-        return self._append_trace({**state, "plan": plan}, "Planner Agent", "Selected a five-step staffing intelligence workflow.", plan)
+        return self._append_trace(
+            {**state, "plan": plan, "agent_context": agent_context},
+            "Planner Agent",
+            "Selected a runtime workflow from the account blueprint and enabled agent configuration.",
+            plan,
+        )
 
     def _ingestion_node(self, state: FlowState) -> FlowState:
         interaction = state["interaction"]
@@ -153,14 +157,22 @@ class Flow360Workflow:
         context = self.retriever.search(query=query, account_id=state["account_id"], top_k=8)
         source_names = [item.source_title for item in context[:5]]
         updated = {**state, "retrieved_context": context}
-        return self._append_trace(updated, "Retrieval Agent", "Retrieved account, candidate, policy, and playbook evidence.", source_names)
+        return self._append_trace(updated, "Retrieval Agent", "Retrieved account memory, source records, policy context, and prior decision evidence.", source_names)
 
     def _analysis_node(self, state: FlowState) -> FlowState:
         context_payload = [item.model_dump() for item in state.get("retrieved_context", [])]
         fallback = self._fallback_analysis(state["account_id"])
+        agent_context = state.get("agent_context") or self._agent_context(state["account_id"])
         analysis = self.llm.complete_json(
-            system="You are a workforce operations analyst. Return only strict JSON with account_health, urgency_score, risks, opportunities, missing_information, and decision_points.",
-            user=json.dumps({"interaction": state["interaction"], "context": context_payload}, indent=2),
+            system=(
+                "You are a domain-specific business analyst agent in Flow360. "
+                "Use the account blueprint to reason in the correct business domain. "
+                "Return only strict JSON with account_health, urgency_score, risks, opportunities, missing_information, and decision_points."
+            ),
+            user=json.dumps(
+                {"agent_blueprint": agent_context, "interaction": state["interaction"], "context": context_payload},
+                indent=2,
+            ),
             fallback=fallback,
             model=self.settings.groq_reasoning_model,
             temperature=0.15,
@@ -168,15 +180,25 @@ class Flow360Workflow:
         if not isinstance(analysis, dict):
             analysis = fallback
         updated = {**state, "analysis": analysis}
-        return self._append_trace(updated, "Business Analyst Agent", "Identified renewal risk, compliance blockers, and missing buying context.", ["risk_map", "opportunity_map"])
+        return self._append_trace(updated, "Business Analyst Agent", "Identified domain risks, missing information, decision points, and business opportunities.", ["risk_map", "opportunity_map"])
 
     def _recommendation_node(self, state: FlowState) -> FlowState:
         evidence = state.get("retrieved_context", [])
         evidence_payload = [item.model_dump() for item in evidence]
         fallback = {"recommendations": self._fallback_recommendations(state["account_id"])}
+        agent_context = state.get("agent_context") or self._agent_context(state["account_id"])
         generated = self.llm.complete_json(
-            system="You create staffing next best actions. Return strict JSON: {\"recommendations\": [...]}. Each item needs title, action, category, priority, owner_role, due_date, confidence, rationale, evidence_indexes, business_metric.",
-            user=json.dumps({"analysis": state.get("analysis", {}), "evidence": evidence_payload}, indent=2),
+            system=(
+                "You are the Flow360 Recommendation Agent. "
+                "Create domain-specific next best actions using the runtime account blueprint, business rules, enabled agents, and success metrics. "
+                "Return strict JSON: {\"recommendations\": [...]}. "
+                "Each item needs title, action, category, priority, owner_role, due_date, confidence, rationale, evidence_indexes, business_metric. "
+                "Do not use staffing terms unless the account blueprint is a staffing or candidate workflow."
+            ),
+            user=json.dumps(
+                {"agent_blueprint": agent_context, "analysis": state.get("analysis", {}), "evidence": evidence_payload},
+                indent=2,
+            ),
             fallback=fallback,
             model=self.settings.groq_reasoning_model,
             temperature=0.18,
@@ -215,23 +237,48 @@ class Flow360Workflow:
             )
 
         updated = {**state, "recommendations": recommendations}
-        return self._append_trace(updated, "Recommendation Agent", "Produced ranked next best actions with owners, due dates, confidence, and evidence.", [item.title for item in recommendations])
+        return self._append_trace(updated, "Recommendation Agent", "Produced blueprint-aware next best actions with owners, due dates, confidence, and evidence.", [item.title for item in recommendations])
 
     def _memory_node(self, state: FlowState) -> FlowState:
         memory_updates = [
             {
                 "memory_type": "episodic",
                 "target": state["account_id"],
-                "summary": "Pending human review for generated staffing next best actions.",
+                "summary": "Pending human review for generated next best actions.",
             },
             {
                 "memory_type": "profile",
                 "target": state["account_id"],
-                "summary": "Account remains renewal-sensitive until credentialing and CFO approval are resolved.",
+                "summary": "Account remains sensitive until the highest-priority blockers and approval owners are resolved.",
             },
         ]
         updated = {**state, "memory_updates": memory_updates}
         return self._append_trace(updated, "Memory Agent", "Prepared episodic and profile memory updates for human-in-the-loop feedback.", ["episodic_memory", "profile_memory"])
+
+    def _agent_context(self, account_id: str) -> dict[str, Any]:
+        account = self.store.get_account(account_id)
+        metadata = account.metadata or {}
+        return {
+            "account": {
+                "id": account.id,
+                "name": account.name,
+                "segment": account.segment,
+                "domain": account.domain,
+                "description": account.description,
+                "primary_user": account.primary_user,
+                "supports_candidates": account.supports_candidates,
+            },
+            "source_types": metadata.get("source_types", []),
+            "memory_types": metadata.get("memory_types", []),
+            "business_rules": metadata.get("business_rules", []),
+            "recommendation_categories": metadata.get("recommendation_categories", []),
+            "success_metrics": metadata.get("success_metrics", []),
+            "agents_enabled": metadata.get("agents_enabled", []),
+            "prompt_policy": (
+                "Every agent must adapt terminology, risk analysis, owners, and recommendation categories to this blueprint. "
+                "Use evidence from retrieved context and mark missing information instead of inventing facts."
+            ),
+        }
 
     @staticmethod
     def _select_evidence(evidence: list[Evidence], indexes: list[Any]) -> list[Evidence]:
@@ -247,12 +294,8 @@ class Flow360Workflow:
             return selected[:3]
         return evidence[:3]
 
-    @staticmethod
-    def _account_domain(account_id: str) -> str:
-        for account in DEMO_ACCOUNTS:
-            if account["id"] == account_id:
-                return account["domain"]
-        return "healthcare_staffing"
+    def _account_domain(self, account_id: str) -> str:
+        return self.store.get_account(account_id).domain
 
     def _fallback_analysis(self, account_id: str) -> dict[str, Any]:
         domain = self._account_domain(account_id)

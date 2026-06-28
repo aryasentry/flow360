@@ -13,8 +13,8 @@ class EmbeddingService:
         self.settings = settings
         self._ollama_available: bool | None = None
 
-    def embed(self, text: str) -> list[float]:
-        if self._ollama_available is not False:
+    def embed(self, text: str, *, use_ollama: bool = True) -> list[float]:
+        if use_ollama and self._ollama_available is not False:
             try:
                 response = httpx.post(
                     f"{self.settings.ollama_base_url.rstrip('/')}/api/embeddings",

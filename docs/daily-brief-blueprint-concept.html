@@ -1,0 +1,907 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flow360 Daily Brief + Blueprint Studio Concept</title>
+    <style>
+      :root {
+        --ink: #111111;
+        --muted: rgba(17, 17, 17, 0.58);
+        --line: rgba(17, 17, 17, 0.1);
+        --paper: #f4f3f0;
+        --card: #ffffff;
+        --soft: #fbfaf8;
+        --dark: #101319;
+        --indigo: #4f46e5;
+        --cyan: #06b6d4;
+        --emerald: #059669;
+        --amber: #d97706;
+        --rose: #e11d48;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--paper);
+        color: var(--ink);
+      }
+
+      body {
+        padding: 18px;
+      }
+
+      button {
+        font: inherit;
+        letter-spacing: 0;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+        min-height: calc(100vh - 36px);
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: white;
+        box-shadow: 0 18px 70px rgba(0, 0, 0, 0.08);
+      }
+
+      .sidebar {
+        border-right: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.86);
+        padding: 16px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 24px;
+        font-weight: 750;
+      }
+
+      .logo {
+        display: grid;
+        width: 38px;
+        height: 38px;
+        place-items: center;
+        border-radius: 8px;
+        background: #050505;
+        color: white;
+      }
+
+      .nav {
+        display: grid;
+        gap: 8px;
+      }
+
+      .nav button {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 42px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        background: transparent;
+        color: rgba(17, 17, 17, 0.72);
+        padding: 0 10px;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .nav button.active {
+        border-color: rgba(79, 70, 229, 0.2);
+        background: #eef2ff;
+        color: #3730a3;
+        font-weight: 700;
+      }
+
+      .main {
+        min-width: 0;
+      }
+
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        border-bottom: 1px solid var(--line);
+        padding: 18px 22px;
+      }
+
+      .eyebrow {
+        margin: 0;
+        color: var(--indigo);
+        font-size: 13px;
+        font-weight: 750;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        margin-top: 3px;
+        font-size: clamp(28px, 3.2vw, 42px);
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        margin-top: 8px;
+        max-width: 760px;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.6;
+      }
+
+      .primary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        height: 42px;
+        border: 0;
+        border-radius: 8px;
+        background: #050505;
+        color: white;
+        padding: 0 16px;
+        font-size: 14px;
+        font-weight: 760;
+        cursor: pointer;
+      }
+
+      .content {
+        padding: 16px;
+      }
+
+      .hero {
+        overflow: hidden;
+        border-radius: 12px;
+        background:
+          radial-gradient(circle at 12% 0%, rgba(34, 211, 238, 0.26), transparent 30%),
+          radial-gradient(circle at 88% 8%, rgba(79, 70, 229, 0.22), transparent 26%),
+          linear-gradient(135deg, #111319, #0a0c10);
+        color: white;
+        padding: 20px;
+      }
+
+      .hero-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) repeat(3, 170px);
+        gap: 12px;
+        align-items: end;
+      }
+
+      .hero h2 {
+        max-width: 620px;
+        font-size: clamp(28px, 3vw, 40px);
+        letter-spacing: 0;
+      }
+
+      .hero p {
+        margin-top: 10px;
+        max-width: 660px;
+        color: rgba(255, 255, 255, 0.62);
+        line-height: 1.55;
+      }
+
+      .metric {
+        min-height: 104px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.07);
+        padding: 14px;
+      }
+
+      .metric span {
+        color: rgba(255, 255, 255, 0.46);
+        font-size: 12px;
+        font-weight: 720;
+        text-transform: uppercase;
+      }
+
+      .metric strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 28px;
+      }
+
+      .metric small {
+        display: block;
+        margin-top: 4px;
+        color: rgba(255, 255, 255, 0.5);
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: 14px;
+        margin-top: 14px;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--card);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.045);
+      }
+
+      .brief-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .brief-card {
+        display: grid;
+        grid-template-columns: 54px minmax(0, 1fr) 210px;
+        gap: 14px;
+        align-items: stretch;
+        padding: 14px;
+      }
+
+      .rank {
+        display: grid;
+        width: 44px;
+        height: 44px;
+        place-items: center;
+        border-radius: 10px;
+        background: #050505;
+        color: white;
+        font-weight: 800;
+      }
+
+      .tag-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        height: 24px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: white;
+        padding: 0 8px;
+        color: rgba(17, 17, 17, 0.58);
+        font-size: 12px;
+        font-weight: 720;
+      }
+
+      .tag.red {
+        border-color: rgba(225, 29, 72, 0.18);
+        background: #fff1f2;
+        color: #be123c;
+      }
+
+      .tag.amber {
+        border-color: rgba(217, 119, 6, 0.2);
+        background: #fffbeb;
+        color: #b45309;
+      }
+
+      .tag.blue {
+        border-color: rgba(79, 70, 229, 0.18);
+        background: #eef2ff;
+        color: #3730a3;
+      }
+
+      .brief-card h3 {
+        margin-top: 8px;
+        font-size: 20px;
+      }
+
+      .brief-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .info {
+        min-height: 110px;
+        border-radius: 8px;
+        background: var(--soft);
+        padding: 11px;
+      }
+
+      .info span {
+        display: block;
+        color: rgba(17, 17, 17, 0.45);
+        font-size: 11px;
+        font-weight: 780;
+        text-transform: uppercase;
+      }
+
+      .info p {
+        margin-top: 7px;
+        color: rgba(17, 17, 17, 0.68);
+        font-size: 13px;
+        line-height: 1.48;
+      }
+
+      .scorebox {
+        display: grid;
+        align-content: space-between;
+        border-left: 1px solid var(--line);
+        padding-left: 14px;
+      }
+
+      .scorebox span {
+        color: rgba(17, 17, 17, 0.45);
+        font-size: 11px;
+        font-weight: 780;
+        text-transform: uppercase;
+      }
+
+      .scorebox strong {
+        display: block;
+        font-size: 36px;
+      }
+
+      .scorebox button {
+        width: 100%;
+      }
+
+      .side-stack {
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+
+      .side-card {
+        padding: 14px;
+      }
+
+      .side-card h2 {
+        font-size: 18px;
+      }
+
+      .radar-item,
+      .outcome-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--soft);
+        padding: 11px;
+      }
+
+      .stack-list {
+        display: grid;
+        gap: 9px;
+        margin-top: 12px;
+      }
+
+      .radar-item strong,
+      .outcome-item strong {
+        font-size: 13px;
+      }
+
+      .radar-item span,
+      .outcome-item span {
+        display: block;
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .owner {
+        flex: 0 0 auto;
+        align-self: start;
+        border-radius: 999px;
+        background: #111111;
+        color: white;
+        padding: 5px 8px;
+        font-size: 11px;
+        font-weight: 750;
+      }
+
+      .blueprint-window {
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr);
+        margin-top: 14px;
+        overflow: hidden;
+        border: 1px solid rgba(6, 182, 212, 0.18);
+        border-radius: 12px;
+        background: #101319;
+        color: white;
+        box-shadow: 0 18px 70px rgba(0, 0, 0, 0.12);
+      }
+
+      .window-sidebar {
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 16px;
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .window-sidebar h2 {
+        font-size: 19px;
+      }
+
+      .window-sidebar p {
+        margin-top: 8px;
+        color: rgba(255, 255, 255, 0.56);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .domain-tabs {
+        display: grid;
+        gap: 8px;
+        margin-top: 18px;
+      }
+
+      .domain-tabs button {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.06);
+        color: rgba(255, 255, 255, 0.68);
+        padding: 11px;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .domain-tabs button.active {
+        border-color: rgba(34, 211, 238, 0.36);
+        background: rgba(34, 211, 238, 0.12);
+        color: white;
+      }
+
+      .window-main {
+        padding: 16px;
+      }
+
+      .blueprint-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .blueprint-head p {
+        margin-top: 7px;
+        max-width: 620px;
+        color: rgba(255, 255, 255, 0.56);
+        line-height: 1.55;
+      }
+
+      .blueprint-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .blue-card {
+        min-height: 156px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.06);
+        padding: 13px;
+      }
+
+      .blue-card span {
+        color: rgba(34, 211, 238, 0.92);
+        font-size: 11px;
+        font-weight: 780;
+        text-transform: uppercase;
+      }
+
+      .blue-card strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 15px;
+      }
+
+      .blue-card p {
+        margin-top: 8px;
+        color: rgba(255, 255, 255, 0.58);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .window-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .ghost {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 38px;
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        border-radius: 8px;
+        background: transparent;
+        color: white;
+        padding: 0 13px;
+        font-size: 13px;
+        font-weight: 760;
+      }
+
+      @media (max-width: 1180px) {
+        body {
+          padding: 0;
+        }
+
+        .shell {
+          grid-template-columns: 1fr;
+          min-height: 100vh;
+          border-radius: 0;
+        }
+
+        .sidebar {
+          display: none;
+        }
+
+        .hero-grid,
+        .layout,
+        .blueprint-window {
+          grid-template-columns: 1fr;
+        }
+
+        .brief-card {
+          grid-template-columns: 1fr;
+        }
+
+        .scorebox {
+          border-left: 0;
+          border-top: 1px solid var(--line);
+          padding-left: 0;
+          padding-top: 12px;
+        }
+
+        .blueprint-grid,
+        .brief-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="logo">✦</div>
+          <span>Flow360</span>
+        </div>
+        <nav class="nav">
+          <button class="active">Today</button>
+          <button>Accounts</button>
+          <button>Dashboard</button>
+          <button>Memory</button>
+          <button>Execution</button>
+          <button>Blueprints</button>
+        </nav>
+      </aside>
+
+      <main class="main">
+        <header class="header">
+          <div>
+            <p class="eyebrow">All accounts</p>
+            <h1>Daily Command Brief</h1>
+            <p class="subtitle">
+              A simple morning screen: which account matters, who to escalate to, what outcome improves, and the one next click.
+            </p>
+          </div>
+          <button class="primary">Open top priority →</button>
+        </header>
+
+        <div class="content">
+          <section class="hero">
+            <div class="hero-grid">
+              <div>
+                <p class="eyebrow" style="color: #a5f3fc">Automated work prioritization</p>
+                <h2>Flow360 reduces the day to three decisions.</h2>
+                <p>
+                  Review the top account, pull in the right owner, and track the expected business outcome. Everything else stays behind the scenes.
+                </p>
+              </div>
+              <div class="metric">
+                <span>Accounts scanned</span>
+                <strong>3</strong>
+                <small>same platform workflow</small>
+              </div>
+              <div class="metric">
+                <span>Escalations</span>
+                <strong>2</strong>
+                <small>owner identified</small>
+              </div>
+              <div class="metric">
+                <span>Outcome at risk</span>
+                <strong>₹47.2L</strong>
+                <small>avoidable exposure</small>
+              </div>
+            </div>
+          </section>
+
+          <div class="layout">
+            <section class="brief-list">
+              <article class="card brief-card">
+                <div class="rank">1</div>
+                <div>
+                  <div class="tag-row">
+                    <span class="tag red">Critical</span>
+                    <span class="tag blue">Healthcare staffing</span>
+                  </div>
+                  <h3>Aarogya Health Network</h3>
+                  <div class="brief-grid">
+                    <div class="info">
+                      <span>Why today</span>
+                      <p>ICU shortlist is due today, but candidate readiness is blocked by license verification.</p>
+                    </div>
+                    <div class="info">
+                      <span>Escalate to</span>
+                      <p>Meera Nair for credentialing clearance and Rohan Kulkarni for premium-rate approval.</p>
+                    </div>
+                    <div class="info">
+                      <span>Outcome impact</span>
+                      <p>Prevents repeat SLA breach and protects the August renewal conversation.</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="scorebox">
+                  <div>
+                    <span>Focus score</span>
+                    <strong>86</strong>
+                  </div>
+                  <button class="primary">Open Candidates/BGV →</button>
+                </div>
+              </article>
+
+              <article class="card brief-card">
+                <div class="rank">2</div>
+                <div>
+                  <div class="tag-row">
+                    <span class="tag amber">High</span>
+                    <span class="tag blue">SaaS customer success</span>
+                  </div>
+                  <h3>NavaPay Fintech</h3>
+                  <div class="brief-grid">
+                    <div class="info">
+                      <span>Why today</span>
+                      <p>Renewal risk is active because API latency and adoption blockers are still visible.</p>
+                    </div>
+                    <div class="info">
+                      <span>Escalate to</span>
+                      <p>Vikram Sethi for RCA ownership and Suhani Bansal for renewal alignment.</p>
+                    </div>
+                    <div class="info">
+                      <span>Outcome impact</span>
+                      <p>Improves renewal confidence and reduces open blocker count before QBR.</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="scorebox">
+                  <div>
+                    <span>Focus score</span>
+                    <strong>77</strong>
+                  </div>
+                  <button class="primary">Open Risks →</button>
+                </div>
+              </article>
+
+              <article class="card brief-card">
+                <div class="rank">3</div>
+                <div>
+                  <div class="tag-row">
+                    <span class="tag amber">Watch</span>
+                    <span class="tag blue">Energy field service</span>
+                  </div>
+                  <h3>PrithviGrid Utilities</h3>
+                  <div class="brief-grid">
+                    <div class="info">
+                      <span>Why today</span>
+                      <p>Monsoon dispatch risk is rising and certified technician coverage must be confirmed.</p>
+                    </div>
+                    <div class="info">
+                      <span>Escalate to</span>
+                      <p>Ishita Rao for safety clearance and Harish Nambiar for outage priority.</p>
+                    </div>
+                    <div class="info">
+                      <span>Outcome impact</span>
+                      <p>Reduces dispatch delay risk for hospital feeder and outage response tickets.</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="scorebox">
+                  <div>
+                    <span>Focus score</span>
+                    <strong>65</strong>
+                  </div>
+                  <button class="primary">Open Meetings →</button>
+                </div>
+              </article>
+            </section>
+
+            <aside class="side-stack">
+              <section class="card side-card">
+                <h2>Escalation Radar</h2>
+                <div class="stack-list">
+                  <div class="radar-item">
+                    <div>
+                      <strong>Aarogya credentialing</strong>
+                      <span>License blocker before client shortlist.</span>
+                    </div>
+                    <span class="owner">Meera</span>
+                  </div>
+                  <div class="radar-item">
+                    <div>
+                      <strong>NavaPay RCA owner</strong>
+                      <span>Latency remediation needs accountable owner.</span>
+                    </div>
+                    <span class="owner">Vikram</span>
+                  </div>
+                  <div class="radar-item">
+                    <div>
+                      <strong>PrithviGrid safety clearance</strong>
+                      <span>Certified crew availability before dispatch.</span>
+                    </div>
+                    <span class="owner">Ishita</span>
+                  </div>
+                </div>
+              </section>
+
+              <section class="card side-card">
+                <h2>Outcome Scorecard</h2>
+                <div class="stack-list">
+                  <div class="outcome-item">
+                    <div>
+                      <strong>SLA risk</strong>
+                      <span>Projected reduction if top action completes.</span>
+                    </div>
+                    <span class="tag red">-31%</span>
+                  </div>
+                  <div class="outcome-item">
+                    <div>
+                      <strong>Approval cycle</strong>
+                      <span>Time saved by generated brief and owner routing.</span>
+                    </div>
+                    <span class="tag blue">4.5h</span>
+                  </div>
+                  <div class="outcome-item">
+                    <div>
+                      <strong>Evidence coverage</strong>
+                      <span>Recommendations with source-backed rationale.</span>
+                    </div>
+                    <span class="tag">92%</span>
+                  </div>
+                </div>
+              </section>
+            </aside>
+          </div>
+
+          <section class="blueprint-window">
+            <aside class="window-sidebar">
+              <h2>Domain Blueprint Studio</h2>
+              <p>
+                A separate setup window that proves Flow360 is reusable. Configure a new business domain without rebuilding the platform.
+              </p>
+              <div class="domain-tabs">
+                <button class="active" data-domain="staffing">Healthcare Staffing</button>
+                <button data-domain="saas">SaaS Customer Success</button>
+                <button data-domain="energy">Energy Field Service</button>
+                <button data-domain="new">Create New Blueprint</button>
+              </div>
+            </aside>
+
+            <div class="window-main">
+              <div class="blueprint-head">
+                <div>
+                  <p class="eyebrow" style="color: #67e8f9">Reusable architecture</p>
+                  <h2 id="blueprintTitle">Healthcare Staffing Blueprint</h2>
+                  <p id="blueprintSubtitle">
+                    Defines how Flow360 understands CRM records, candidate readiness, credentialing policies, SLA incidents, and staffing recommendations.
+                  </p>
+                </div>
+                <button class="ghost">Preview account setup</button>
+              </div>
+
+              <div class="blueprint-grid">
+                <div class="blue-card">
+                  <span>Source types</span>
+                  <strong id="sourceTypes">CRM, meetings, policies, risks, candidates</strong>
+                  <p>Determines which pages and ingestion routes are enabled.</p>
+                </div>
+                <div class="blue-card">
+                  <span>Agents</span>
+                  <strong id="agents">Planner, retrieval, BGV, analyst, recommendation</strong>
+                  <p>Turns the same platform into a domain-specific workflow.</p>
+                </div>
+                <div class="blue-card">
+                  <span>Rules</span>
+                  <strong id="rules">Block shortlist if license is pending</strong>
+                  <p>Compiles playbooks into checks the planner must respect.</p>
+                </div>
+                <div class="blue-card">
+                  <span>Success metrics</span>
+                  <strong id="metrics">SLA risk, time-to-fill, renewal exposure</strong>
+                  <p>Connects recommendations to measurable business outcomes.</p>
+                </div>
+              </div>
+
+              <div class="window-actions">
+                <button class="primary">Create account from blueprint</button>
+                <button class="ghost">Export config JSON</button>
+                <button class="ghost">Run sample planner</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      const blueprints = {
+        staffing: {
+          title: "Healthcare Staffing Blueprint",
+          subtitle:
+            "Defines how Flow360 understands CRM records, candidate readiness, credentialing policies, SLA incidents, and staffing recommendations.",
+          sourceTypes: "CRM, meetings, policies, risks, candidates",
+          agents: "Planner, retrieval, BGV, analyst, recommendation",
+          rules: "Block shortlist if license is pending",
+          metrics: "SLA risk, time-to-fill, renewal exposure",
+        },
+        saas: {
+          title: "SaaS Customer Success Blueprint",
+          subtitle:
+            "Configures Flow360 for renewal risk, product adoption, incident RCA, stakeholder alignment, and customer success plays.",
+          sourceTypes: "CRM, QBR notes, support tickets, runbooks, adoption data",
+          agents: "Planner, retrieval, risk analyst, renewal analyst",
+          rules: "Escalate if renewal is close and severity-1 incidents remain open",
+          metrics: "ARR at risk, adoption lift, blocker closure",
+        },
+        energy: {
+          title: "Energy Field Service Blueprint",
+          subtitle:
+            "Configures Flow360 for outage response, technician dispatch, safety clearance, field notes, and SLA commitments.",
+          sourceTypes: "CRM assets, field messages, safety policies, RCA notes",
+          agents: "Planner, retrieval, safety analyst, dispatch analyst",
+          rules: "Block dispatch if safety certification is not confirmed",
+          metrics: "SLA risk, outage resolution time, safety compliance",
+        },
+        new: {
+          title: "Create New Blueprint",
+          subtitle:
+            "A product owner defines a new domain by choosing source types, agents, rules, memory layers, and success metrics.",
+          sourceTypes: "Choose or add source categories",
+          agents: "Select reusable agents",
+          rules: "Add playbook checks",
+          metrics: "Define measurable outcomes",
+        },
+      };
+
+      document.querySelectorAll(".domain-tabs button").forEach((button) => {
+        button.addEventListener("click", () => {
+          document.querySelectorAll(".domain-tabs button").forEach((item) => item.classList.remove("active"));
+          button.classList.add("active");
+          const data = blueprints[button.dataset.domain];
+          document.getElementById("blueprintTitle").textContent = data.title;
+          document.getElementById("blueprintSubtitle").textContent = data.subtitle;
+          document.getElementById("sourceTypes").textContent = data.sourceTypes;
+          document.getElementById("agents").textContent = data.agents;
+          document.getElementById("rules").textContent = data.rules;
+          document.getElementById("metrics").textContent = data.metrics;
+        });
+      });
+    </script>
+  </body>
+</html>

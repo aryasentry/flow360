@@ -1,0 +1,795 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flow360 Memory Brain Design Gallery</title>
+  <style>
+    :root {
+      --ink: #101010;
+      --muted: rgba(16, 16, 16, 0.58);
+      --line: rgba(16, 16, 16, 0.1);
+      --paper: #f4f3f0;
+      --cyan: #22d3ee;
+      --indigo: #6366f1;
+      --green: #34d399;
+      --amber: #f59e0b;
+      --rose: #fb7185;
+      --violet: #a78bfa;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 10% 10%, rgba(99, 102, 241, 0.14), transparent 28%),
+        radial-gradient(circle at 88% 8%, rgba(34, 211, 238, 0.12), transparent 24%),
+        linear-gradient(135deg, #fbfaf8 0%, #f4f3f0 58%, #ecebe6 100%);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button {
+      border: 0;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .shell {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+    }
+
+    .mark {
+      display: grid;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      border-radius: 8px;
+      background: #000;
+      color: #fff;
+      box-shadow: 0 16px 42px rgba(0, 0, 0, 0.18);
+    }
+
+    .button {
+      display: inline-flex;
+      height: 40px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      padding: 0 14px;
+      background: #000;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 750;
+    }
+
+    .button.secondary {
+      background: #fff;
+      color: #111;
+      border: 1px solid var(--line);
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 0.88fr) minmax(460px, 1.12fr);
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.76);
+      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.08);
+      backdrop-filter: blur(18px);
+    }
+
+    .intro {
+      padding: 28px;
+    }
+
+    .eyebrow {
+      color: #4f46e5;
+      font-size: 12px;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 12px 0 0;
+      max-width: 650px;
+      font-size: clamp(42px, 7vw, 86px);
+      line-height: 0.98;
+      letter-spacing: 0;
+    }
+
+    .intro p {
+      max-width: 660px;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.75;
+    }
+
+    .chooser {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    .choice {
+      min-height: 92px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      padding: 13px;
+      text-align: left;
+      transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+    }
+
+    .choice:hover,
+    .choice.active {
+      transform: translateY(-2px);
+      border-color: rgba(99, 102, 241, 0.34);
+      background: #f0f0ff;
+    }
+
+    .choice small {
+      color: #4f46e5;
+      font-size: 11px;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .choice strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 15px;
+    }
+
+    .choice span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .stage {
+      position: relative;
+      min-height: 720px;
+      overflow: hidden;
+      border-radius: 12px;
+      background:
+        radial-gradient(circle at 50% 44%, rgba(34, 211, 238, 0.18), transparent 32%),
+        radial-gradient(circle at 20% 72%, rgba(245, 158, 11, 0.12), transparent 28%),
+        #101319;
+      color: #fff;
+    }
+
+    .stage::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: radial-gradient(circle at 50% 48%, #000 0, transparent 76%);
+      pointer-events: none;
+    }
+
+    .design {
+      position: absolute;
+      inset: 0;
+      display: none;
+      padding: 22px;
+    }
+
+    .design.active {
+      display: block;
+    }
+
+    .inspector {
+      position: absolute;
+      left: 22px;
+      right: 22px;
+      bottom: 22px;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      z-index: 20;
+    }
+
+    .inspector-card {
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.08);
+      padding: 14px;
+      backdrop-filter: blur(16px);
+    }
+
+    .inspector-card small {
+      color: rgba(255,255,255,0.45);
+      font-size: 11px;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .inspector-card p {
+      margin: 8px 0 0;
+      color: rgba(255,255,255,0.78);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .label {
+      position: absolute;
+      left: 22px;
+      top: 22px;
+      z-index: 10;
+    }
+
+    .label small {
+      color: var(--cyan);
+      font-size: 11px;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .label h2 {
+      margin: 6px 0 0;
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+
+    .label p {
+      max-width: 520px;
+      margin: 8px 0 0;
+      color: rgba(255,255,255,0.56);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    /* Design 1: Cortex lobes */
+    .cortex-wrap {
+      position: absolute;
+      inset: 112px 48px 128px;
+    }
+
+    .lobe {
+      position: absolute;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: linear-gradient(145deg, rgba(255,255,255,0.16), rgba(255,255,255,0.04));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 24px 70px rgba(0,0,0,0.28);
+      backdrop-filter: blur(18px);
+    }
+
+    .lobe button {
+      width: 100%;
+      height: 100%;
+      padding: 22px;
+      color: inherit;
+      background: transparent;
+      text-align: left;
+    }
+
+    .lobe small,
+    .node small,
+    .orbit-item small,
+    .stack-card small,
+    .cell small,
+    .river-card small {
+      display: block;
+      color: var(--cyan);
+      font-size: 10px;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .lobe strong,
+    .node strong,
+    .orbit-item strong,
+    .stack-card strong,
+    .cell strong,
+    .river-card strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 15px;
+      line-height: 1.25;
+    }
+
+    .lobe span,
+    .node span,
+    .orbit-item span,
+    .stack-card span,
+    .cell span,
+    .river-card span {
+      display: block;
+      margin-top: 7px;
+      color: rgba(255,255,255,0.55);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .profile { left: 7%; top: 8%; width: 39%; height: 32%; border-radius: 64% 42% 48% 56%; }
+    .rule { right: 7%; top: 8%; width: 39%; height: 32%; border-radius: 42% 64% 56% 48%; }
+    .interaction { left: 4%; top: 37%; width: 36%; height: 34%; border-radius: 56% 42% 58% 44%; }
+    .risk { right: 4%; top: 37%; width: 36%; height: 34%; border-radius: 42% 56% 44% 58%; }
+    .review { left: 30%; bottom: 0; width: 40%; height: 34%; border-radius: 50% 50% 56% 56%; }
+
+    .core {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      display: grid;
+      width: 214px;
+      height: 214px;
+      place-items: center;
+      transform: translate(-50%, -50%);
+      border: 1px solid rgba(34,211,238,0.35);
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(34,211,238,0.24), rgba(99,102,241,0.18) 48%, rgba(255,255,255,0.06) 72%);
+      box-shadow: 0 0 80px rgba(34,211,238,0.24);
+      text-align: center;
+      padding: 28px;
+      z-index: 6;
+    }
+
+    .core strong { display: block; font-size: 20px; }
+    .core span { display: block; margin-top: 8px; color: rgba(255,255,255,0.58); font-size: 12px; line-height: 1.45; }
+
+    /* Design 2: Neural mesh */
+    .mesh {
+      position: absolute;
+      inset: 100px 40px 132px;
+    }
+
+    .mesh svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.72;
+    }
+
+    .node {
+      position: absolute;
+      width: 180px;
+      border: 1px solid rgba(255,255,255,0.13);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.08);
+      padding: 14px;
+      backdrop-filter: blur(16px);
+    }
+
+    .n1 { left: 4%; top: 8%; }
+    .n2 { left: 38%; top: 3%; }
+    .n3 { right: 5%; top: 12%; }
+    .n4 { left: 12%; bottom: 13%; }
+    .n5 { left: 43%; bottom: 4%; }
+    .n6 { right: 10%; bottom: 18%; }
+    .ncore {
+      left: 50%;
+      top: 48%;
+      transform: translate(-50%, -50%);
+      border-color: rgba(34,211,238,0.38);
+      background: rgba(34,211,238,0.13);
+      box-shadow: 0 0 70px rgba(34,211,238,0.22);
+    }
+
+    /* Design 3: Memory orbit */
+    .orbit {
+      position: absolute;
+      left: 50%;
+      top: 48%;
+      width: 500px;
+      height: 500px;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,255,255,0.08), transparent 68%);
+    }
+
+    .ring {
+      position: absolute;
+      inset: var(--inset);
+      border: 1px dashed rgba(255,255,255,0.18);
+      border-radius: 50%;
+      animation: rotate var(--speed) linear infinite;
+    }
+
+    @keyframes rotate {
+      to { transform: rotate(360deg); }
+    }
+
+    .orbit-core {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      display: grid;
+      width: 190px;
+      height: 190px;
+      place-items: center;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      border: 1px solid rgba(34,211,238,0.4);
+      background: rgba(34,211,238,0.13);
+      text-align: center;
+      padding: 24px;
+      box-shadow: 0 0 80px rgba(34,211,238,0.2);
+    }
+
+    .orbit-core strong { display: block; font-size: 20px; }
+    .orbit-core span { display: block; margin-top: 8px; color: rgba(255,255,255,0.58); font-size: 12px; }
+
+    .orbit-item {
+      position: absolute;
+      width: 158px;
+      border: 1px solid rgba(255,255,255,0.13);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.09);
+      padding: 12px;
+      backdrop-filter: blur(16px);
+    }
+
+    .o1 { left: 0; top: 78px; }
+    .o2 { right: 0; top: 78px; }
+    .o3 { left: 38px; bottom: 52px; }
+    .o4 { right: 38px; bottom: 52px; }
+
+    /* Design 4: Layered memory stack */
+    .stack {
+      position: absolute;
+      inset: 120px 46px 130px;
+      display: grid;
+      gap: 12px;
+      align-content: center;
+    }
+
+    .stack-card {
+      position: relative;
+      display: grid;
+      grid-template-columns: 150px 1fr 90px;
+      align-items: center;
+      min-height: 78px;
+      border: 1px solid rgba(255,255,255,0.13);
+      border-radius: 12px;
+      background: linear-gradient(90deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04));
+      padding: 14px;
+      overflow: hidden;
+    }
+
+    .stack-card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      width: var(--trust);
+      background: linear-gradient(90deg, rgba(34,211,238,0.2), transparent);
+      pointer-events: none;
+    }
+
+    .trust {
+      justify-self: end;
+      color: #fff;
+      font-weight: 850;
+    }
+
+    /* Design 5: Memory heatmap */
+    .heatmap {
+      position: absolute;
+      inset: 116px 46px 130px;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      grid-auto-rows: 106px;
+      gap: 10px;
+    }
+
+    .cell {
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      padding: 12px;
+      background:
+        radial-gradient(circle at 80% 18%, var(--glow), transparent 42%),
+        rgba(255,255,255,0.075);
+      backdrop-filter: blur(12px);
+    }
+
+    .cell.large {
+      grid-column: span 2;
+      grid-row: span 2;
+      padding: 18px;
+    }
+
+    /* Design 6: Signal river */
+    .river {
+      position: absolute;
+      inset: 112px 46px 132px;
+    }
+
+    .stream {
+      position: absolute;
+      left: 4%;
+      right: 4%;
+      top: 44%;
+      height: 120px;
+      border-radius: 999px;
+      background:
+        linear-gradient(90deg, rgba(99,102,241,0.08), rgba(34,211,238,0.25), rgba(52,211,153,0.12)),
+        rgba(255,255,255,0.05);
+      box-shadow: 0 0 90px rgba(34,211,238,0.2);
+      transform: rotate(-3deg);
+    }
+
+    .river-card {
+      position: absolute;
+      width: 170px;
+      border: 1px solid rgba(255,255,255,0.13);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.09);
+      padding: 13px;
+      backdrop-filter: blur(16px);
+    }
+
+    .r1 { left: 2%; top: 5%; }
+    .r2 { left: 22%; top: 55%; }
+    .r3 { left: 43%; top: 9%; }
+    .r4 { right: 20%; top: 56%; }
+    .r5 { right: 2%; top: 10%; }
+
+    .memory-list {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    .memory-card {
+      padding: 16px;
+    }
+
+    .memory-card small {
+      color: #4f46e5;
+      font-size: 11px;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .memory-card h3 {
+      margin: 8px 0 0;
+      font-size: 18px;
+    }
+
+    .memory-card p {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    @media (max-width: 980px) {
+      .hero { grid-template-columns: 1fr; }
+      .chooser, .memory-list, .inspector { grid-template-columns: 1fr; }
+      .stage { min-height: 820px; }
+      .cortex-wrap, .mesh, .stack, .heatmap, .river { left: 18px; right: 18px; }
+      .heatmap { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark">F</div>
+        <span>Flow360 Memory Brain Gallery</span>
+      </div>
+      <button class="button secondary" id="reset">Reset selection</button>
+    </header>
+
+    <section class="hero">
+      <div class="panel intro">
+        <div class="eyebrow">Choose a memory representation</div>
+        <h1>Six ways to make enterprise memory feel alive.</h1>
+        <p>
+          These are alternative MVP directions for the Memory page. Each one keeps the same business meaning:
+          profile memory, rule memory, interaction signals, risk episodes, and human-reviewed judgment.
+        </p>
+
+        <div class="chooser">
+          <button class="choice active" data-view="cortex"><small>Design 01</small><strong>Cortex Lobes</strong><span>Most brain-like. Best for an impressive demo moment.</span></button>
+          <button class="choice" data-view="mesh"><small>Design 02</small><strong>Neural Mesh</strong><span>Shows connected evidence and reasoning paths.</span></button>
+          <button class="choice" data-view="orbit"><small>Design 03</small><strong>Memory Orbit</strong><span>Good for layers around the account nucleus.</span></button>
+          <button class="choice" data-view="stack"><small>Design 04</small><strong>Trust Stack</strong><span>Most practical for business users and audit review.</span></button>
+          <button class="choice" data-view="heatmap"><small>Design 05</small><strong>Memory Heatmap</strong><span>Best for freshness, stale signals, and coverage gaps.</span></button>
+          <button class="choice" data-view="river"><small>Design 06</small><strong>Signal River</strong><span>Best for showing how raw inputs become decisions.</span></button>
+        </div>
+      </div>
+
+      <div class="panel stage">
+        <section class="design active" data-design="cortex">
+          <div class="label">
+            <small>Memory cortex</small>
+            <h2>Cortex Lobes</h2>
+            <p>Click-like lobes for profile, rules, signals, risk, and human judgment. This feels the most like a brain.</p>
+          </div>
+          <div class="cortex-wrap">
+            <div class="lobe profile"><button><small>Profile</small><strong>CRM and stakeholders</strong><span>Who approves and what matters commercially.</span></button></div>
+            <div class="lobe rule"><button><small>Rules</small><strong>Playbooks and policies</strong><span>Guardrails that constrain the planner.</span></button></div>
+            <div class="lobe interaction"><button><small>Signals</small><strong>Meetings and mails</strong><span>Fresh customer language and promises.</span></button></div>
+            <div class="lobe risk"><button><small>Risk</small><strong>SLA and RCA memory</strong><span>Past mistakes that should not repeat.</span></button></div>
+            <div class="lobe review"><button><small>Review</small><strong>Human decisions</strong><span>Approved and rejected actions.</span></button></div>
+            <div class="core"><div><strong>Account Memory</strong><span>18 sources, 91% trust, 5 layers linked.</span></div></div>
+          </div>
+        </section>
+
+        <section class="design" data-design="mesh">
+          <div class="label">
+            <small>Reasoning network</small>
+            <h2>Neural Mesh</h2>
+            <p>Best if you want to show the path from evidence to recommendation without looking like a normal graph.</p>
+          </div>
+          <div class="mesh">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+              <path d="M16 20 L50 14 L84 24 L50 48 L20 78 L50 84 L80 74 L50 48 L16 20" fill="none" stroke="rgba(34,211,238,0.42)" stroke-width="0.5"/>
+              <path d="M50 14 L20 78 M84 24 L50 84 M16 20 L80 74" fill="none" stroke="rgba(99,102,241,0.28)" stroke-width="0.5"/>
+            </svg>
+            <div class="node n1"><small>CRM</small><strong>Stakeholder map</strong><span>Kavya, Rohan, Meera.</span></div>
+            <div class="node n2"><small>Policy</small><strong>Credentialing rule</strong><span>Do not shortlist uncleared candidates.</span></div>
+            <div class="node n3"><small>Email</small><strong>CFO approval</strong><span>Rate justification needed.</span></div>
+            <div class="node n4"><small>Incident</small><strong>May SLA miss</strong><span>Late license check caused breach.</span></div>
+            <div class="node n5"><small>Decision</small><strong>Block candidate</strong><span>Recommended because evidence converges.</span></div>
+            <div class="node n6"><small>Review</small><strong>Human approval</strong><span>Writes back to episodic memory.</span></div>
+            <div class="node ncore"><small>Planner</small><strong>Evidence-weighted reasoning</strong><span>Connects sources before action.</span></div>
+          </div>
+        </section>
+
+        <section class="design" data-design="orbit">
+          <div class="label">
+            <small>Memory layers</small>
+            <h2>Memory Orbit</h2>
+            <p>Best for explaining that account memory is the nucleus, and sources orbit around it by trust and freshness.</p>
+          </div>
+          <div class="orbit">
+            <div class="ring" style="--inset: 0; --speed: 38s;"></div>
+            <div class="ring" style="--inset: 70px; --speed: 28s;"></div>
+            <div class="ring" style="--inset: 140px; --speed: 18s;"></div>
+            <div class="orbit-core"><div><strong>Aarogya</strong><span>Account memory nucleus</span></div></div>
+            <div class="orbit-item o1"><small>Raw</small><strong>Meetings</strong><span>Newest signals.</span></div>
+            <div class="orbit-item o2"><small>Rule</small><strong>Policies</strong><span>Highest authority.</span></div>
+            <div class="orbit-item o3"><small>Profile</small><strong>CRM</strong><span>Commercial context.</span></div>
+            <div class="orbit-item o4"><small>Episodic</small><strong>Breaches</strong><span>Patterns to avoid.</span></div>
+          </div>
+        </section>
+
+        <section class="design" data-design="stack">
+          <div class="label">
+            <small>Business readable</small>
+            <h2>Trust Stack</h2>
+            <p>Best for non-technical judges: every memory layer has trust, origin, and planner use.</p>
+          </div>
+          <div class="stack">
+            <div class="stack-card" style="--trust: 91%;"><div><small>Profile</small><strong>Account profile</strong></div><span>CRM facts, owners, renewal exposure.</span><div class="trust">91%</div></div>
+            <div class="stack-card" style="--trust: 96%;"><div><small>Rule</small><strong>Credentialing policy</strong></div><span>Blocks unsafe shortlist actions.</span><div class="trust">96%</div></div>
+            <div class="stack-card" style="--trust: 86%;"><div><small>Raw</small><strong>Meeting notes</strong></div><span>Fresh but must be cross-checked.</span><div class="trust">86%</div></div>
+            <div class="stack-card" style="--trust: 88%;"><div><small>Episodic</small><strong>May breach pattern</strong></div><span>Prevents repeated SLA miss.</span><div class="trust">88%</div></div>
+            <div class="stack-card" style="--trust: 94%;"><div><small>Review</small><strong>Approved decisions</strong></div><span>Human feedback with highest planner weight.</span><div class="trust">94%</div></div>
+          </div>
+        </section>
+
+        <section class="design" data-design="heatmap">
+          <div class="label">
+            <small>Coverage and freshness</small>
+            <h2>Memory Heatmap</h2>
+            <p>Best for finding gaps fast: bright cells are fresh, dim cells need more context or review.</p>
+          </div>
+          <div class="heatmap">
+            <div class="cell large" style="--glow: rgba(34,211,238,0.34);"><small>Fresh</small><strong>Urgent staffing call</strong><span>Added after last planner run.</span></div>
+            <div class="cell" style="--glow: rgba(52,211,153,0.28);"><small>Approved</small><strong>Checklist</strong><span>Policy authority.</span></div>
+            <div class="cell" style="--glow: rgba(245,158,11,0.28);"><small>Watch</small><strong>Rate card</strong><span>Needs CFO threshold.</span></div>
+            <div class="cell" style="--glow: rgba(251,113,133,0.3);"><small>Contradiction</small><strong>Candidate status</strong><span>CRM says ready, BGV says pending.</span></div>
+            <div class="cell" style="--glow: rgba(99,102,241,0.28);"><small>Profile</small><strong>Sponsor map</strong><span>Owner known.</span></div>
+            <div class="cell" style="--glow: rgba(34,211,238,0.2);"><small>Raw</small><strong>Email</strong><span>Needs extraction.</span></div>
+            <div class="cell" style="--glow: rgba(52,211,153,0.22);"><small>Review</small><strong>Approval</strong><span>Execution queued.</span></div>
+            <div class="cell" style="--glow: rgba(245,158,11,0.22);"><small>Stale</small><strong>Old SLA note</strong><span>Recheck impact.</span></div>
+          </div>
+        </section>
+
+        <section class="design" data-design="river">
+          <div class="label">
+            <small>From source to action</small>
+            <h2>Signal River</h2>
+            <p>Best for showing the end-to-end flow: scattered sources become memory, then decisions, then new memory.</p>
+          </div>
+          <div class="river">
+            <div class="stream"></div>
+            <div class="river-card r1"><small>Ingest</small><strong>CRM and notes</strong><span>Raw business context enters.</span></div>
+            <div class="river-card r2"><small>Remember</small><strong>Semantic chunks</strong><span>Sources become searchable memory.</span></div>
+            <div class="river-card r3"><small>Reason</small><strong>Risk and rules</strong><span>Planner weighs evidence.</span></div>
+            <div class="river-card r4"><small>Recommend</small><strong>Next best action</strong><span>Owner, date, confidence.</span></div>
+            <div class="river-card r5"><small>Learn</small><strong>Human review</strong><span>Approval writes back.</span></div>
+          </div>
+        </section>
+
+        <div class="inspector">
+          <div class="inspector-card"><small>Planner use</small><p id="planner">Use memory to decide what action matters now.</p></div>
+          <div class="inspector-card"><small>Best for</small><p id="best">A visually impressive memory page replacement.</p></div>
+          <div class="inspector-card"><small>Demo line</small><p id="demo">This is not chat history. It is governed enterprise memory.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="memory-list">
+      <article class="panel memory-card"><small>Recommendation</small><h3>Best visual impact</h3><p>Choose Cortex Lobes if you want the biggest wow moment in the demo.</p></article>
+      <article class="panel memory-card"><small>Best practical UI</small><h3>Most usable for non-technical users</h3><p>Choose Trust Stack if you want the clearest business explanation with low confusion.</p></article>
+      <article class="panel memory-card"><small>Best hybrid</small><h3>Good compromise</h3><p>Use Cortex on top and Trust Stack below it for beauty plus auditability.</p></article>
+    </section>
+  </main>
+
+  <script>
+    const copy = {
+      cortex: {
+        planner: "Planner uses memory lobes as weighted context: rules constrain, signals update, review teaches.",
+        best: "Most visually memorable. Use it as the first screen of Memory.",
+        demo: "Flow360 remembers like an operating brain, not like a folder of documents."
+      },
+      mesh: {
+        planner: "Planner follows edges from source evidence to the recommended action.",
+        best: "Best when explaining reasoning and evidence chains.",
+        demo: "The action is not guessed; it is connected to evidence nodes."
+      },
+      orbit: {
+        planner: "Planner treats the account as the nucleus and pulls memory from orbiting layers.",
+        best: "Best for explaining shared account memory across source types.",
+        demo: "Every source orbits the account with a trust and freshness weight."
+      },
+      stack: {
+        planner: "Planner reads trust, origin, and authority before allowing memory to influence recommendations.",
+        best: "Best for non-technical judges and auditability.",
+        demo: "Business users can see what the AI trusts and why."
+      },
+      heatmap: {
+        planner: "Planner detects hot, stale, missing, and contradictory memory before action.",
+        best: "Best for showing gaps and freshness.",
+        demo: "The system knows what it knows, and what needs review."
+      },
+      river: {
+        planner: "Planner follows the flow from raw source to reviewed decision and memory writeback.",
+        best: "Best for explaining the full lifecycle quickly.",
+        demo: "Every approval becomes new memory, improving the next run."
+      }
+    };
+
+    const choices = [...document.querySelectorAll(".choice")];
+    const designs = [...document.querySelectorAll(".design")];
+
+    function select(view) {
+      choices.forEach((item) => item.classList.toggle("active", item.dataset.view === view));
+      designs.forEach((item) => item.classList.toggle("active", item.dataset.design === view));
+      document.getElementById("planner").textContent = copy[view].planner;
+      document.getElementById("best").textContent = copy[view].best;
+      document.getElementById("demo").textContent = copy[view].demo;
+    }
+
+    choices.forEach((choice) => choice.addEventListener("click", () => select(choice.dataset.view)));
+    document.getElementById("reset").addEventListener("click", () => select("cortex"));
+  </script>
+</body>
+</html>

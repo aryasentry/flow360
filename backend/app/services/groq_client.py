@@ -44,7 +44,7 @@ class GroqRouter:
         for offset in range(len(keys)):
             index = (self._next_key_index + offset) % len(keys)
             try:
-                client = Groq(api_key=keys[index])
+                client = Groq(api_key=keys[index], timeout=25.0)
                 response = client.chat.completions.create(
                     model=selected_model,
                     messages=[
@@ -69,8 +69,9 @@ class GroqRouter:
         fallback: dict[str, Any] | list[Any],
         model: str | None = None,
         temperature: float = 0.2,
+        max_tokens: int = 1800,
     ) -> dict[str, Any] | list[Any]:
-        result = self.complete(system=system, user=user, model=model, temperature=temperature)
+        result = self.complete(system=system, user=user, model=model, temperature=temperature, max_tokens=max_tokens)
         if not result:
             return fallback
         parsed = self._parse_json(result.content)
@@ -101,4 +102,3 @@ class GroqRouter:
             return json.loads(content[start : end + 1])
         except json.JSONDecodeError:
             return None
-

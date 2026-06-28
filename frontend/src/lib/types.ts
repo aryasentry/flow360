@@ -152,3 +152,68 @@ export type GuideChatResponse = {
   confidence: number;
   mode: "live" | "demo-fallback";
 };
+
+export type OutcomeMetric = {
+  label: string;
+  before: string;
+  after: string;
+  delta: string;
+  rationale: string;
+};
+
+export type OutcomeScorecard = {
+  headline: string;
+  overall_score: number;
+  confidence: number;
+  projected_impact: string;
+  metrics: OutcomeMetric[];
+};
+
+export type EscalationItem = {
+  title: string;
+  owner: string;
+  role: string;
+  deadline: string;
+  reason: string;
+  evidence: string[];
+  channel: string;
+  priority: "critical" | "high" | "medium" | "low";
+};
+
+export type AccountIntelligence = {
+  account_id: string;
+  account_name: string;
+  outcomes: OutcomeScorecard;
+  escalations: EscalationItem[];
+};
+
+export type IntelligenceBriefsResponse = {
+  mode: "live" | "demo-fallback";
+  accounts: AccountIntelligence[];
+};
+
+export type BlueprintBuilderKey =
+  | "source_types"
+  | "memory_types"
+  | "business_rules"
+  | "recommendation_categories"
+  | "success_metrics"
+  | "agents_enabled";
+
+export type BlueprintAccountDraft = {
+  name: string;
+  segment: string;
+  description: string;
+  primary_user: string;
+  supports_candidates: boolean;
+  domain?: BusinessDomain;
+};
+
+export type BlueprintSuggestionResponse = {
+  account: BlueprintAccountDraft;
+  options: Record<BlueprintBuilderKey, string[]>;
+};
+
+export type BlueprintOptionResponse = {
+  options: string[];
+};

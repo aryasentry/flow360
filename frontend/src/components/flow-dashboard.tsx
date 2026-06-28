@@ -39,19 +39,28 @@ import {
 } from "lucide-react";
 
 import {
+  createBlueprintAccount,
   createSourceEntry,
   getDashboardState,
+  getIntelligenceBriefs,
   guideChat,
   reviewRecommendation,
   runBGV,
   runPlanner,
+  suggestBlueprint,
+  suggestBlueprintOptions,
   uploadDocument,
 } from "@/lib/api";
 import { fallbackDashboardState, pendingSourceSamples, type PendingSourceSample } from "@/lib/demo-data";
 import type {
   AccountSummary,
+  AccountIntelligence,
   AgentRunResult,
   BGVResult,
+  BlueprintAccountDraft,
+  BlueprintBuilderKey,
+  BlueprintSuggestionResponse,
+  BusinessDomain,
   CandidateProfile,
   DashboardState,
   GuideMessage,
@@ -65,6 +74,9 @@ type ActiveView =
   | "today"
   | "accounts"
   | "dashboard"
+  | "outcomes"
+  | "escalations"
+  | "blueprints"
   | "crm"
   | "interactions"
   | "knowledge"
@@ -126,6 +138,18 @@ type DailyBrief = {
   signals: string[];
 };
 
+type DomainBlueprint = {
+  id: BusinessDomain;
+  title: string;
+  description: string;
+  sourceTypes: string[];
+  agents: string[];
+  businessRules: string[];
+  memoryTypes: string[];
+  successMetrics: string[];
+  recommendationCategories: string[];
+};
+
 const priorityClass: Record<Recommendation["priority"], string> = {
   critical: "border-rose-200 bg-rose-100 text-rose-700",
   high: "border-amber-200 bg-amber-100 text-amber-700",
@@ -156,6 +180,75 @@ const artifactTabs: Array<{ key: ExecutionArtifactKey; label: string; icon: type
   { key: "escalation", label: "Escalation Note", icon: ShieldAlert },
   { key: "sla", label: "SLA Update", icon: BadgeCheck },
   { key: "summary", label: "Meeting Summary", icon: ClipboardList },
+];
+
+const domainBlueprints: DomainBlueprint[] = [
+  {
+    id: "healthcare_staffing",
+    title: "Healthcare Staffing",
+    description: "Urgent hiring, candidate clearance, credentialing, rate approvals, and replacement guarantees.",
+    sourceTypes: ["CRM account profile", "Meeting transcript", "Candidate profile", "Credentialing checklist", "SLA breach RCA"],
+    agents: ["Planner", "Retrieval", "Business Analyst", "Recommendation", "BGV/Credentialing", "Memory"],
+    businessRules: ["Never shortlist uncleared candidates as fully ready", "Escalate premium rates above policy threshold", "Tie every urgent action to start-date risk"],
+    memoryTypes: ["Profile memory", "Rule memory", "Episodic breach memory", "Candidate clearance memory"],
+    successMetrics: ["Start-date adherence", "Candidate clearance speed", "SLA breach risk", "Approval turnaround"],
+    recommendationCategories: ["Credentialing escalation", "Shortlist delivery", "Rate approval", "Replacement coverage"],
+  },
+  {
+    id: "saas_customer_success",
+    title: "SaaS Customer Success",
+    description: "Renewal saves, product adoption, support escalations, stakeholder alignment, and QBR follow-through.",
+    sourceTypes: ["CRM renewal record", "QBR notes", "Support ticket RCA", "Usage/adoption snapshot", "Executive email"],
+    agents: ["Planner", "Retrieval", "Risk Analyst", "Adoption Analyst", "Recommendation", "Memory"],
+    businessRules: ["Red renewals inside 90 days need a named save plan", "Technical blockers need owner and milestone", "Executive complaints require visible follow-up"],
+    memoryTypes: ["Account profile", "Adoption memory", "Incident memory", "Stakeholder memory"],
+    successMetrics: ["Renewal risk movement", "Product adoption lift", "Open blocker reduction", "Executive sentiment"],
+    recommendationCategories: ["Renewal save plan", "Product escalation", "Adoption play", "Executive alignment"],
+  },
+  {
+    id: "energy_field_service",
+    title: "Energy Field Service",
+    description: "Outage response, technician dispatch, safety compliance, maintenance SLAs, and monsoon readiness.",
+    sourceTypes: ["Dispatch log", "Outage incident", "Safety checklist", "Technician availability", "Maintenance contract note"],
+    agents: ["Planner", "Retrieval", "Field Risk Analyst", "Safety Analyst", "Recommendation", "Memory"],
+    businessRules: ["Safety-critical outages outrank routine maintenance", "Missing certified technician coverage triggers escalation", "Renewal risk rises after repeat SLA misses"],
+    memoryTypes: ["Asset memory", "Safety rule memory", "Outage episode memory", "Technician profile memory"],
+    successMetrics: ["Outage recovery time", "Safety compliance", "Technician coverage", "SLA breach risk"],
+    recommendationCategories: ["Dispatch escalation", "Safety approval", "Maintenance reschedule", "Renewal-risk mitigation"],
+  },
+];
+
+const blueprintBuilderSteps: Array<{ key: BlueprintBuilderKey; label: string; helper: string }> = [
+  {
+    key: "source_types",
+    label: "Source types",
+    helper: "Choose the systems or documents Flow360 should read for this account.",
+  },
+  {
+    key: "memory_types",
+    label: "Memory types",
+    helper: "Choose what the platform should remember persistently after ingestion and review.",
+  },
+  {
+    key: "business_rules",
+    label: "Business rules",
+    helper: "Choose guardrails that should influence recommendations.",
+  },
+  {
+    key: "recommendation_categories",
+    label: "Recommendation categories",
+    helper: "Choose the action types the planner should produce.",
+  },
+  {
+    key: "success_metrics",
+    label: "Success metrics",
+    helper: "Choose how this account should prove business value.",
+  },
+  {
+    key: "agents_enabled",
+    label: "Agents enabled",
+    helper: "Choose specialist agents to run under the planner.",
+  },
 ];
 
 const sourceLabels: Record<SourceCollection, { title: string; subtitle: string; icon: typeof BriefcaseBusiness; upload: boolean }> = {
@@ -242,6 +335,9 @@ const viewLabels: Record<ActiveView, string> = {
   today: "Today",
   accounts: "Accounts",
   dashboard: "Dashboard",
+  outcomes: "Outcomes",
+  escalations: "Escalation Radar",
+  blueprints: "Blueprints",
   crm: "CRM",
   interactions: "Meetings & Mail",
   knowledge: "Knowledge",
@@ -578,6 +674,33 @@ export function FlowDashboard() {
   const [activeArtifact, setActiveArtifact] = useState<ExecutionArtifactKey>("email");
   const [copyStatus, setCopyStatus] = useState("");
   const [selectedLedgerId, setSelectedLedgerId] = useState<string | null>(null);
+  const [intelligence, setIntelligence] = useState<AccountIntelligence[]>([]);
+  const [isIntelligenceLoading, setIsIntelligenceLoading] = useState(false);
+  const [selectedBlueprintId, setSelectedBlueprintId] = useState<BusinessDomain>("healthcare_staffing");
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [builderStep, setBuilderStep] = useState(-1);
+  const [builderText, setBuilderText] = useState("");
+  const [builderSuggestion, setBuilderSuggestion] = useState<BlueprintSuggestionResponse | null>(null);
+  const [builderSelections, setBuilderSelections] = useState<Record<BlueprintBuilderKey, string[]>>({
+    source_types: [],
+    memory_types: [],
+    business_rules: [],
+    recommendation_categories: [],
+    success_metrics: [],
+    agents_enabled: [],
+  });
+  const [builderCustomPrompt, setBuilderCustomPrompt] = useState<Record<BlueprintBuilderKey, string>>({
+    source_types: "",
+    memory_types: "",
+    business_rules: "",
+    recommendation_categories: "",
+    success_metrics: "",
+    agents_enabled: "",
+  });
+  const [builderStatus, setBuilderStatus] = useState("");
+  const [isSuggestingBlueprint, setIsSuggestingBlueprint] = useState(false);
+  const [isAddingBlueprintOption, setIsAddingBlueprintOption] = useState(false);
+  const [isCreatingBlueprintAccount, setIsCreatingBlueprintAccount] = useState(false);
   const [guideMessages, setGuideMessages] = useState<GuideMessage[]>([
     {
       role: "assistant",
@@ -615,6 +738,24 @@ export function FlowDashboard() {
     };
   }, [accountIds, state.accounts]);
 
+  useEffect(() => {
+    let cancelled = false;
+    getIntelligenceBriefs()
+      .then((data) => {
+        if (!cancelled) {
+          setIntelligence(data.accounts ?? []);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsIntelligenceLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountIds]);
+
   const account = state.account;
   const sources = state.sources ?? emptySources();
   const recommendations = useMemo(() => {
@@ -636,12 +777,19 @@ export function FlowDashboard() {
     activeSelected && lastExecution && (!lastExecution.recommendation_id || lastExecution.recommendation_id === activeSelected.id)
       ? lastExecution
       : null;
+  const intelligenceByAccount = useMemo(
+    () => new Map(intelligence.map((item) => [item.account_id, item])),
+    [intelligence],
+  );
 
   const navItems = useMemo(() => {
     const base: Array<{ id: ActiveView; label: string; icon: typeof BriefcaseBusiness }> = [
       { id: "today", label: "Today", icon: CalendarDays },
       { id: "accounts", label: "Accounts", icon: Building2 },
       { id: "dashboard", label: "Dashboard", icon: ClipboardList },
+      { id: "outcomes", label: "Outcomes", icon: BadgeCheck },
+      { id: "escalations", label: "Escalation Radar", icon: ShieldAlert },
+      { id: "blueprints", label: "Blueprints", icon: FolderOpen },
       { id: "crm", label: "CRM", icon: BriefcaseBusiness },
       { id: "interactions", label: "Meetings & Mail", icon: Mail },
       { id: "knowledge", label: "Knowledge", icon: BookOpen },
@@ -665,6 +813,16 @@ export function FlowDashboard() {
     setSelected(nextState.recommendations[0] ?? null);
   }
 
+  async function refreshIntelligence() {
+    setIsIntelligenceLoading(true);
+    try {
+      const data = await getIntelligenceBriefs();
+      setIntelligence(data.accounts ?? []);
+    } finally {
+      setIsIntelligenceLoading(false);
+    }
+  }
+
   function chooseAccount(next: AccountSummary) {
     setAccountId(next.id);
     setActiveView("dashboard");
@@ -681,6 +839,7 @@ export function FlowDashboard() {
     setRun(result);
     setSelected(result.recommendations[0] ?? null);
     setActiveView("dashboard");
+    refreshIntelligence();
     setIsRunning(false);
   }
 
@@ -715,6 +874,7 @@ export function FlowDashboard() {
       setActiveArtifact("email");
       setActiveView("execution");
     }
+    refreshIntelligence();
   }
 
   function draftFor(collection: SourceCollection) {
@@ -836,6 +996,7 @@ export function FlowDashboard() {
       content: "",
       fields: Object.fromEntries(fieldSpecs[collection].map((field) => [field.key, ""])),
     });
+    refreshIntelligence();
   }
 
   async function handleUpload(collection: SourceCollection, file?: File) {
@@ -845,6 +1006,7 @@ export function FlowDashboard() {
       await uploadDocument(file, account.id, collection, sourceTypeFor(collection));
       setUploadStatus((current) => ({ ...current, [collection]: "Indexed into memory" }));
       await refreshAccount(account.id);
+      refreshIntelligence();
     } catch {
       setUploadStatus((current) => ({ ...current, [collection]: "Backend offline" }));
     }
@@ -885,6 +1047,9 @@ export function FlowDashboard() {
           activeView === "today" ? "Current Dashboard" : "Run Planner",
           ...(activeView === "today" ? ["Open top priority", "Open account next step"] : []),
           ...(activeView === "dashboard" ? ["Approve selected action", "Reject selected action"] : []),
+          ...(activeView === "outcomes" ? ["Open account", "Open Escalation Radar"] : []),
+          ...(activeView === "escalations" ? ["Open account", "Open Execution Studio"] : []),
+          ...(activeView === "blueprints" ? ["Select blueprint", "Compare domains"] : []),
           ...(activeView === "execution" ? ["Approve and generate artifacts", "Copy artifact", "Open Memory Ledger"] : []),
           ...(activeView === "crm" || activeView === "interactions" || activeView === "knowledge" || activeView === "risks" || activeView === "candidates"
             ? ["Load sample", "Save and ingest to memory", "Upload file"]
@@ -896,8 +1061,14 @@ export function FlowDashboard() {
             ? ["Daily Command Brief", "Ranked Account Briefs", "One-Click Work Queue", "Automation Logic"]
             : activeView === "dashboard"
             ? ["Metrics", "Recommendation Inbox", "Agent Decision Flow", "Risk Trend"]
+            : activeView === "outcomes"
+              ? ["Business Outcome Scorecards", "Before / After Metrics", "Projected Impact"]
+              : activeView === "escalations"
+                ? ["Escalation Radar", "Owner Deadlines", "Evidence"]
+                : activeView === "blueprints"
+                  ? ["Domain Blueprint Studio", "Source Types", "Agents", "Business Rules", "Success Metrics"]
             : activeView === "memory"
-              ? ["Memory Graph", "Memory Sources", "Memory Ledger", "Memory Cards", "Evidence For Selected Action"]
+              ? ["Neural Memory Mesh", "Memory Sources", "Memory Ledger", "Memory Cards", "Evidence For Selected Action"]
               : activeView === "execution"
                 ? ["Approval Execution Studio", "Generated Artifacts", "Execution Timeline", "Memory Writeback"]
                 : activeView === "trace"
@@ -926,6 +1097,7 @@ export function FlowDashboard() {
           Object.entries(sources).map(([key, value]) => [key, value.slice(0, 4).map((entry) => entry.title)]),
         ),
         visible_metrics: state.metrics,
+        generated_intelligence: intelligenceByAccount.get(account.id) ?? null,
         candidate_names: state.candidates.slice(0, 6).map((candidate) => candidate.name),
         rule: "Use this visible_context as the only source of truth for UI navigation and button names.",
       },
@@ -934,6 +1106,650 @@ export function FlowDashboard() {
     });
     setGuideMessages((current) => [...current, { role: "assistant", content: response.answer }]);
     setIsGuideLoading(false);
+  }
+
+  function resetBuilder() {
+    setBuilderStep(-1);
+    setBuilderSuggestion(null);
+    setBuilderStatus("");
+    setBuilderSelections({
+      source_types: [],
+      memory_types: [],
+      business_rules: [],
+      recommendation_categories: [],
+      success_metrics: [],
+      agents_enabled: [],
+    });
+    setBuilderCustomPrompt({
+      source_types: "",
+      memory_types: "",
+      business_rules: "",
+      recommendation_categories: "",
+      success_metrics: "",
+      agents_enabled: "",
+    });
+  }
+
+  function updateBuilderDraft(next: Partial<BlueprintAccountDraft>) {
+    setBuilderSuggestion((current) => {
+      if (!current) return current;
+      return { ...current, account: { ...current.account, ...next } };
+    });
+  }
+
+  async function generateBlueprintBuilder() {
+    const description = builderText.trim();
+    if (!description) {
+      setBuilderStatus("Describe the account first.");
+      return;
+    }
+    setIsSuggestingBlueprint(true);
+    setBuilderStatus("Generating blueprint options from the account description...");
+    const selectedBlueprint = domainBlueprints.find((item) => item.id === selectedBlueprintId) ?? domainBlueprints[0];
+    try {
+      const suggestion = await suggestBlueprint({
+        account_text: description,
+        domain: selectedBlueprint.id,
+        blueprint_title: selectedBlueprint.title,
+      });
+      setBuilderSuggestion(suggestion);
+      setBuilderSelections(
+        Object.fromEntries(
+          blueprintBuilderSteps.map((step) => [step.key, suggestion.options[step.key]?.slice(0, 5) ?? []]),
+        ) as Record<BlueprintBuilderKey, string[]>,
+      );
+      setBuilderStep(0);
+      setBuilderStatus("");
+    } catch {
+      setBuilderStatus("Could not reach the blueprint AI. Check the backend and Groq keys, then try again.");
+    } finally {
+      setIsSuggestingBlueprint(false);
+    }
+  }
+
+  function toggleBuilderOption(key: BlueprintBuilderKey, option: string) {
+    setBuilderSelections((current) => {
+      const selected = new Set(current[key]);
+      if (selected.has(option)) {
+        selected.delete(option);
+      } else {
+        selected.add(option);
+      }
+      return { ...current, [key]: Array.from(selected) };
+    });
+  }
+
+  async function addBlueprintOptions(key: BlueprintBuilderKey) {
+    const instruction = builderCustomPrompt[key].trim();
+    if (!instruction || !builderSuggestion) return;
+    setIsAddingBlueprintOption(true);
+    setBuilderStatus("Asking AI for more options on this step...");
+    try {
+      const response = await suggestBlueprintOptions({
+        account_text: builderText,
+        domain: selectedBlueprintId,
+        category: key,
+        instruction,
+        selected_options: builderSelections[key],
+      });
+      const existing = new Set(builderSuggestion.options[key].map((item) => item.toLowerCase()));
+      const fresh = response.options.filter((item) => !existing.has(item.toLowerCase()));
+      setBuilderSuggestion((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          options: {
+            ...current.options,
+            [key]: [...current.options[key], ...fresh],
+          },
+        };
+      });
+      setBuilderSelections((current) => ({
+        ...current,
+        [key]: Array.from(new Set([...current[key], ...fresh])),
+      }));
+      setBuilderCustomPrompt((current) => ({ ...current, [key]: "" }));
+      setBuilderStatus(fresh.length ? "Added new options to this card." : "No new options were added.");
+    } catch {
+      const typed = instruction
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      setBuilderSuggestion((current) => {
+        if (!current) return current;
+        return { ...current, options: { ...current.options, [key]: [...current.options[key], ...typed] } };
+      });
+      setBuilderSelections((current) => ({ ...current, [key]: Array.from(new Set([...current[key], ...typed])) }));
+      setBuilderStatus("Backend unavailable, so I added your typed options directly.");
+    } finally {
+      setIsAddingBlueprintOption(false);
+    }
+  }
+
+  async function createAccountFromBuilder() {
+    if (!builderSuggestion) return;
+    setIsCreatingBlueprintAccount(true);
+    setBuilderStatus("Creating account and writing the first memory record...");
+    try {
+      const created = await createBlueprintAccount({
+        account_text: builderText,
+        domain: selectedBlueprintId,
+        name: builderSuggestion.account.name,
+        segment: builderSuggestion.account.segment,
+        description: builderSuggestion.account.description,
+        primary_user: builderSuggestion.account.primary_user,
+        supports_candidates: builderSuggestion.account.supports_candidates,
+        selections: builderSelections,
+      });
+      const nextState = await getDashboardState(created.account.id);
+      setState(nextState);
+      setDailyStates((current) => ({ ...current, [nextState.account.id]: nextState }));
+      setAccountId(created.account.id);
+      setActiveView("dashboard");
+      setBuilderOpen(false);
+      resetBuilder();
+      refreshIntelligence();
+    } catch {
+      setBuilderStatus("Could not create the account. Check backend/Supabase connection and try again.");
+    } finally {
+      setIsCreatingBlueprintAccount(false);
+    }
+  }
+
+  function outcomesView() {
+    return (
+      <div className="space-y-4">
+        <section className="rounded-lg border border-black/10 bg-[#111111] p-5 text-white shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase text-cyan-300">Business Outcome Scorecard</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-normal">Proof that the platform is moving business metrics.</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-white/62">
+                Generated from account memory, source entries, candidates, and planner recommendations. Each card shows before/after signals and
+                projected impact if the top actions are completed.
+              </p>
+            </div>
+            <button
+              onClick={refreshIntelligence}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-white px-4 text-sm font-semibold text-black hover:bg-white/90"
+            >
+              {isIntelligenceLoading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+              Refresh from memory
+            </button>
+          </div>
+        </section>
+
+        <div className="grid gap-4">
+          {state.accounts.map((item) => {
+            const generated = intelligenceByAccount.get(item.id);
+            const metrics = generated?.outcomes.metrics ?? [];
+            return (
+              <article key={item.id} className="rounded-lg border border-black/10 bg-white p-4 shadow-sm">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase text-indigo-700">{item.segment}</p>
+                    <h3 className="mt-1 text-xl font-semibold tracking-normal">{item.name}</h3>
+                    <p className="mt-2 max-w-4xl text-sm leading-6 text-black/60">
+                      {generated?.outcomes.headline ?? "Generating scorecard from memory and account context..."}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg border border-black/10 bg-[#fbfaf8] px-4 py-3 text-center">
+                      <p className="text-xs font-semibold uppercase text-black/42">Outcome score</p>
+                      <p className="mt-1 text-3xl font-semibold">{generated?.outcomes.overall_score ?? "--"}</p>
+                      <p className="mt-1 text-xs text-black/45">{generated?.outcomes.confidence ?? "--"}% confidence</p>
+                    </div>
+                    <button
+                      onClick={() => openAccountView(item, "dashboard")}
+                      className="inline-flex h-10 items-center gap-2 rounded-md bg-black px-3 text-sm font-semibold text-white hover:bg-black/85"
+                    >
+                      Open account
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50 p-3">
+                  <p className="text-xs font-semibold uppercase text-emerald-700">Projected impact if top actions are completed</p>
+                  <p className="mt-2 text-sm leading-6 text-emerald-900">
+                    {generated?.outcomes.projected_impact ?? "Waiting for generated impact."}
+                  </p>
+                </div>
+
+                <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                  {metrics.map((metric) => (
+                    <div key={metric.label} className="rounded-lg border border-black/10 bg-[#fbfaf8] p-3">
+                      <p className="text-xs font-semibold uppercase text-black/42">{metric.label}</p>
+                      <div className="mt-3 grid grid-cols-[1fr_1fr] gap-2 text-xs">
+                        <div className="rounded-md bg-white p-2 ring-1 ring-black/8">
+                          <span className="text-black/42">Before</span>
+                          <p className="mt-1 font-semibold text-black/75">{metric.before}</p>
+                        </div>
+                        <div className="rounded-md bg-white p-2 ring-1 ring-black/8">
+                          <span className="text-black/42">After</span>
+                          <p className="mt-1 font-semibold text-black/75">{metric.after}</p>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-sm font-semibold text-indigo-700">{metric.delta}</p>
+                      <p className="mt-1 line-clamp-3 text-xs leading-5 text-black/52">{metric.rationale}</p>
+                    </div>
+                  ))}
+                  {!metrics.length && (
+                    <div className="rounded-lg border border-dashed border-black/10 bg-[#fbfaf8] p-4 text-sm text-black/55">
+                      {isIntelligenceLoading ? "Generating metrics from memory..." : "No scorecard generated yet."}
+                    </div>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  function escalationsView() {
+    const priorityWeight: Record<Recommendation["priority"], number> = { critical: 4, high: 3, medium: 2, low: 1 };
+    const items = state.accounts
+      .flatMap((item) => {
+        const generated = intelligenceByAccount.get(item.id);
+        return (generated?.escalations ?? []).map((escalation) => ({ account: item, escalation }));
+      })
+      .sort((a, b) => priorityWeight[b.escalation.priority] - priorityWeight[a.escalation.priority]);
+
+    return (
+      <div className="space-y-4">
+        <section className="rounded-lg border border-black/10 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase text-rose-700">Escalation Radar</p>
+              <h2 className="mt-1 text-2xl font-semibold tracking-normal">Who needs to be contacted, why, and by when.</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-black/58">
+                Generated from account memory and current recommendations. Use this when the next best action depends on a CFO, technical
+                owner, safety owner, compliance lead, or hiring manager.
+              </p>
+            </div>
+            <button
+              onClick={refreshIntelligence}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-black/10 px-4 text-sm font-semibold hover:bg-black/5"
+            >
+              {isIntelligenceLoading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+              Refresh radar
+            </button>
+          </div>
+        </section>
+
+        <div className="grid gap-3 xl:grid-cols-3">
+          {items.map(({ account: target, escalation }, escalationIndex) => (
+            <article
+              key={`${target.id}-${escalation.title}-${escalationIndex}`}
+              className="flex h-full flex-col rounded-lg border border-black/10 bg-white p-4 shadow-sm"
+            >
+              <div className="flex min-h-[84px] items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-black/42">{target.name}</p>
+                  <h3 className="mt-2 text-lg font-semibold leading-6 tracking-normal">{escalation.title}</h3>
+                </div>
+                <span className={`rounded-md border px-2 py-1 text-xs font-semibold ${priorityClass[escalation.priority]}`}>
+                  {escalation.priority}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-2 text-sm">
+                <div className="rounded-md bg-[#f7f6f3] p-3">
+                  <p className="text-xs font-semibold uppercase text-black/42">Owner</p>
+                  <p className="mt-1 font-semibold">{escalation.owner}</p>
+                  <p className="mt-1 text-xs text-black/50">{escalation.role}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-md bg-[#f7f6f3] p-3">
+                    <p className="text-xs font-semibold uppercase text-black/42">Deadline</p>
+                    <p className="mt-1 font-semibold">{escalation.deadline}</p>
+                  </div>
+                  <div className="rounded-md bg-[#f7f6f3] p-3">
+                    <p className="text-xs font-semibold uppercase text-black/42">Channel</p>
+                    <p className="mt-1 font-semibold">{escalation.channel}</p>
+                  </div>
+                </div>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-black/62">{escalation.reason}</p>
+              <div className="mt-4 flex-1">
+                <p className="text-xs font-semibold uppercase text-black/42">Evidence</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {escalation.evidence.map((evidence, evidenceIndex) => (
+                    <span
+                      key={`${target.id}-${escalationIndex}-evidence-${evidenceIndex}`}
+                      className="rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 ring-1 ring-indigo-100"
+                    >
+                      {evidence}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
+                <button
+                  onClick={() => openAccountView(target, "dashboard")}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-black px-3 text-sm font-semibold text-white hover:bg-black/85"
+                >
+                  Open account
+                </button>
+                <button
+                  onClick={() => openAccountView(target, "execution")}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-black/10 px-3 text-sm font-semibold hover:bg-black/5"
+                >
+                  Execution
+                </button>
+              </div>
+            </article>
+          ))}
+          {!items.length && (
+            <section className="rounded-lg border border-dashed border-black/10 bg-white p-5 text-sm text-black/55 shadow-sm xl:col-span-3">
+              {isIntelligenceLoading ? "Generating escalation radar from memory..." : "No escalations generated yet. Add memory or run the planner."}
+            </section>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function blueprintStudioView() {
+    const selectedBlueprint = domainBlueprints.find((item) => item.id === selectedBlueprintId) ?? domainBlueprints[0];
+    const columns: Array<[string, string[]]> = [
+      ["Source types", selectedBlueprint.sourceTypes],
+      ["Agents enabled", selectedBlueprint.agents],
+      ["Business rules", selectedBlueprint.businessRules],
+      ["Memory types", selectedBlueprint.memoryTypes],
+      ["Success metrics", selectedBlueprint.successMetrics],
+      ["Recommendation categories", selectedBlueprint.recommendationCategories],
+    ];
+    const activeBuilderStep = blueprintBuilderSteps[builderStep];
+    const isReviewStep = builderSuggestion && builderStep >= blueprintBuilderSteps.length;
+
+    return (
+      <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <section className="rounded-lg border border-black/10 bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <FolderOpen size={18} className="text-indigo-600" />
+            <h2 className="text-lg font-semibold tracking-normal">Domain Blueprint Studio</h2>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-black/55">
+            Pick a domain to see how the same planner, memory, retrieval, and recommendation architecture is configured without rebuilding the
+            product.
+          </p>
+          <button
+            onClick={() => {
+              setBuilderOpen(true);
+              resetBuilder();
+            }}
+            className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-black px-4 text-sm font-semibold text-white hover:bg-black/85"
+          >
+            <Sparkles size={16} />
+            Build New Account
+          </button>
+          <div className="mt-4 space-y-2">
+            {domainBlueprints.map((blueprint) => (
+              <button
+                key={blueprint.id}
+                onClick={() => {
+                  setSelectedBlueprintId(blueprint.id);
+                  setBuilderOpen(false);
+                }}
+                className={`w-full rounded-lg border p-3 text-left transition ${
+                  selectedBlueprint.id === blueprint.id
+                    ? "border-indigo-200 bg-indigo-50 text-indigo-900"
+                    : "border-black/10 bg-[#fbfaf8] hover:bg-black/[0.035]"
+                }`}
+              >
+                <p className="text-sm font-semibold">{blueprint.title}</p>
+                <p className="mt-1 line-clamp-2 text-xs leading-5 text-black/55">{blueprint.description}</p>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {!builderOpen && (
+          <section className="rounded-lg border border-black/10 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase text-indigo-700">Reusable configuration</p>
+                <h2 className="mt-1 text-2xl font-semibold tracking-normal">{selectedBlueprint.title}</h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-black/58">{selectedBlueprint.description}</p>
+              </div>
+              <span className="rounded-md bg-black px-3 py-2 text-xs font-semibold text-white">Single backend workflow</span>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {columns.map(([title, values]) => (
+                <div key={title} className="rounded-lg border border-black/10 bg-[#fbfaf8] p-4">
+                  <p className="text-xs font-semibold uppercase text-black/42">{title}</p>
+                  <div className="mt-3 space-y-2">
+                    {values.map((value) => (
+                      <div key={value} className="flex gap-2 rounded-md bg-white p-2 text-sm leading-5 text-black/68 ring-1 ring-black/8">
+                        <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-600" />
+                        <span>{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {builderOpen && (
+          <section className="rounded-lg border border-black/10 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase text-indigo-700">New account builder</p>
+                <h2 className="mt-1 text-2xl font-semibold tracking-normal">Create a reusable account configuration.</h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-black/58">
+                  Describe the account once. Flow360 suggests one configuration card at a time, you approve the choices, then it creates the account
+                  and stores the first operating brief in memory.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setBuilderOpen(false);
+                  resetBuilder();
+                }}
+                className="inline-flex h-9 items-center justify-center rounded-md border border-black/10 px-3 text-sm font-semibold hover:bg-black/5"
+              >
+                Close builder
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-black/10 bg-[#fbfaf8] p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {["Describe", ...blueprintBuilderSteps.map((step) => step.label), "Create"].map((label, index) => {
+                  const active = index === 0 ? builderStep < 0 : index - 1 === builderStep || (isReviewStep && index === blueprintBuilderSteps.length + 1);
+                  const done = index === 0 ? !!builderSuggestion : builderStep > index - 1;
+                  return (
+                    <span
+                      key={label}
+                      className={`rounded-md px-2 py-1 text-xs font-semibold ${
+                        active
+                          ? "bg-black text-white"
+                          : done
+                            ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100"
+                            : "bg-white text-black/45 ring-1 ring-black/8"
+                      }`}
+                    >
+                      {label}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+
+            {builderStep < 0 && (
+              <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_320px]">
+                <div className="rounded-lg border border-black/10 bg-white p-4">
+                  <label className="text-sm font-semibold">Describe the account in normal language</label>
+                  <textarea
+                    value={builderText}
+                    onChange={(event) => setBuilderText(event.target.value)}
+                    placeholder="Example: An enterprise logistics company manages cold-chain shipments for pharma clients across India. They handle fleet dispatch, temperature incidents, customer escalations, route delays, warehouse SLAs, and renewal risk with large hospital suppliers."
+                    className="mt-3 min-h-[180px] w-full resize-none rounded-lg border border-black/10 bg-[#fbfaf8] p-3 text-sm leading-6 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                  />
+                  <button
+                    onClick={generateBlueprintBuilder}
+                    className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-md bg-black px-4 text-sm font-semibold text-white hover:bg-black/85"
+                  >
+                    {isSuggestingBlueprint ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                    Generate options
+                  </button>
+                </div>
+                <div className="rounded-lg border border-black/10 bg-[#111111] p-4 text-white">
+                  <p className="text-xs font-semibold uppercase text-cyan-300">Base blueprint</p>
+                  <h3 className="mt-2 text-lg font-semibold">{selectedBlueprint.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-white/58">{selectedBlueprint.description}</p>
+                </div>
+              </div>
+            )}
+
+            {builderSuggestion && activeBuilderStep && (
+              <div className="mt-4 rounded-lg border border-black/10 bg-white p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-indigo-700">
+                      Step {builderStep + 1} of {blueprintBuilderSteps.length}
+                    </p>
+                    <h3 className="mt-1 text-xl font-semibold tracking-normal">{activeBuilderStep.label}</h3>
+                    <p className="mt-2 text-sm leading-6 text-black/55">{activeBuilderStep.helper}</p>
+                  </div>
+                  <span className="rounded-md bg-[#f7f6f3] px-3 py-2 text-xs font-semibold text-black/55">
+                    {builderSelections[activeBuilderStep.key].length} selected
+                  </span>
+                </div>
+
+                <div className="mt-4 grid gap-2 md:grid-cols-2">
+                  {builderSuggestion.options[activeBuilderStep.key].map((option) => {
+                    const selected = builderSelections[activeBuilderStep.key].includes(option);
+                    return (
+                      <button
+                        key={option}
+                        onClick={() => toggleBuilderOption(activeBuilderStep.key, option)}
+                        className={`rounded-lg border p-3 text-left text-sm font-medium leading-6 transition ${
+                          selected
+                            ? "border-indigo-200 bg-indigo-50 text-indigo-900"
+                            : "border-black/10 bg-[#fbfaf8] text-black/62 hover:bg-black/[0.035]"
+                        }`}
+                      >
+                        {option}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4 rounded-lg border border-dashed border-black/10 bg-[#fbfaf8] p-3">
+                  <p className="text-sm font-semibold">Need another option?</p>
+                  <div className="mt-2 grid gap-2 md:grid-cols-[1fr_160px]">
+                    <input
+                      value={builderCustomPrompt[activeBuilderStep.key]}
+                      onChange={(event) =>
+                        setBuilderCustomPrompt((current) => ({ ...current, [activeBuilderStep.key]: event.target.value }))
+                      }
+                      placeholder="Ask AI to add options, e.g. include vendor risk or compliance audits"
+                      className="h-10 rounded-md border border-black/10 bg-white px-3 text-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                    />
+                    <button
+                      onClick={() => addBlueprintOptions(activeBuilderStep.key)}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-black/10 bg-white px-3 text-sm font-semibold hover:bg-black/5"
+                    >
+                      {isAddingBlueprintOption ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                      Add options
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-center justify-between gap-2">
+                  <button
+                    onClick={() => setBuilderStep((value) => Math.max(-1, value - 1))}
+                    className="inline-flex h-10 items-center justify-center rounded-md border border-black/10 px-4 text-sm font-semibold hover:bg-black/5"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={() => setBuilderStep((value) => value + 1)}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-black px-4 text-sm font-semibold text-white hover:bg-black/85"
+                  >
+                    Next
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {builderSuggestion && isReviewStep && (
+              <div className="mt-4 grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+                <div className="rounded-lg border border-black/10 bg-[#fbfaf8] p-4">
+                  <p className="text-xs font-semibold uppercase text-indigo-700">Account draft</p>
+                  {[
+                    ["name", "Account name"],
+                    ["segment", "Segment"],
+                    ["primary_user", "Primary user"],
+                  ].map(([key, label]) => (
+                    <label key={key} className="mt-3 block text-xs font-semibold uppercase text-black/42">
+                      {label}
+                      <input
+                        value={String(builderSuggestion.account[key as keyof BlueprintAccountDraft] ?? "")}
+                        onChange={(event) => updateBuilderDraft({ [key]: event.target.value } as Partial<BlueprintAccountDraft>)}
+                        className="mt-1 h-9 w-full rounded-md border border-black/10 bg-white px-3 text-sm normal-case text-black outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </label>
+                  ))}
+                  <label className="mt-3 block text-xs font-semibold uppercase text-black/42">
+                    Description
+                    <textarea
+                      value={builderSuggestion.account.description}
+                      onChange={(event) => updateBuilderDraft({ description: event.target.value })}
+                      className="mt-1 min-h-[110px] w-full resize-none rounded-md border border-black/10 bg-white p-3 text-sm normal-case leading-6 text-black outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                    />
+                  </label>
+                  <label className="mt-3 flex items-center gap-2 text-sm font-medium">
+                    <input
+                      type="checkbox"
+                      checked={builderSuggestion.account.supports_candidates}
+                      onChange={(event) => updateBuilderDraft({ supports_candidates: event.target.checked })}
+                    />
+                    Needs candidate/BGV workflow
+                  </label>
+                </div>
+
+                <div className="rounded-lg border border-black/10 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase text-indigo-700">Review selected configuration</p>
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                    {blueprintBuilderSteps.map((step) => (
+                      <div key={step.key} className="rounded-lg border border-black/10 bg-[#fbfaf8] p-3">
+                        <p className="text-xs font-semibold uppercase text-black/42">{step.label}</p>
+                        <p className="mt-2 text-sm font-semibold">{builderSelections[step.key].length} selected</p>
+                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-black/50">{builderSelections[step.key].join(", ")}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => setBuilderStep(blueprintBuilderSteps.length - 1)}
+                      className="inline-flex h-10 items-center justify-center rounded-md border border-black/10 px-4 text-sm font-semibold hover:bg-black/5"
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={createAccountFromBuilder}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-black px-4 text-sm font-semibold text-white hover:bg-black/85"
+                    >
+                      {isCreatingBlueprintAccount ? <Loader2 size={16} className="animate-spin" /> : <Building2 size={16} />}
+                      Create account
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {builderStatus && <p className="mt-3 rounded-md bg-[#f7f6f3] p-3 text-sm text-black/62">{builderStatus}</p>}
+          </section>
+        )}
+      </div>
+    );
   }
 
   function todayView() {
@@ -1006,7 +1822,10 @@ export function FlowDashboard() {
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <section className="space-y-3">
-            {briefs.map((brief, index) => (
+            {briefs.map((brief, index) => {
+              const generated = intelligenceByAccount.get(brief.account.id);
+              const topEscalation = generated?.escalations[0];
+              return (
               <article key={brief.account.id} className="rounded-lg border border-black/10 bg-white p-4 shadow-sm">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
@@ -1062,6 +1881,25 @@ export function FlowDashboard() {
                   </div>
                 </div>
 
+                {(generated || topEscalation) && (
+                  <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                    <div className="rounded-md border border-emerald-100 bg-emerald-50 p-3">
+                      <p className="text-xs font-semibold uppercase text-emerald-700">Projected outcome</p>
+                      <p className="mt-2 text-sm leading-6 text-emerald-900">
+                        {generated?.outcomes.projected_impact ?? "Generate outcomes from memory to view impact."}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-rose-100 bg-rose-50 p-3">
+                      <p className="text-xs font-semibold uppercase text-rose-700">Escalation radar</p>
+                      <p className="mt-2 text-sm leading-6 text-rose-900">
+                        {topEscalation
+                          ? `${topEscalation.owner} - ${topEscalation.deadline}: ${topEscalation.title}`
+                          : "No escalation generated yet."}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-3 flex flex-wrap gap-2">
                   {brief.signals.map((signal) => (
                     <span key={signal} className="rounded-md bg-white px-2 py-1 text-xs font-medium text-black/55 ring-1 ring-black/8">
@@ -1070,7 +1908,8 @@ export function FlowDashboard() {
                   ))}
                 </div>
               </article>
-            ))}
+              );
+            })}
           </section>
 
           <aside className="space-y-3">
@@ -1756,7 +2595,7 @@ export function FlowDashboard() {
   }
 
   function memoryView() {
-    const sourceGraphNodes = [
+    const memoryMeshNodes = [
       {
         id: "crm",
         label: "CRM",
@@ -1792,81 +2631,121 @@ export function FlowDashboard() {
         count: sources.candidates.length,
         tone: "profile",
       },
-    ].filter((node) => node.count > 0);
+      {
+        id: "review",
+        label: "Review Memory",
+        detail: "approvals, rejections, execution",
+        count: displayMemory.filter((item) => item.memory_type === "episodic").length,
+        tone: "review",
+      },
+    ];
     const memoryQuality = Math.round(
       displayMemory.reduce((total, item) => total + item.confidence, 0) / Math.max(displayMemory.length, 1),
     );
-    const positions = [
-      { left: "18%", top: "22%" },
-      { left: "82%", top: "22%" },
-      { left: "18%", top: "76%" },
-      { left: "82%", top: "76%" },
-      { left: "50%", top: "84%" },
+    const positions: Record<string, { left: string; top: string; x: number; y: number }> = {
+      crm: { left: "15%", top: "22%", x: 15, y: 22 },
+      interactions: { left: "42%", top: "14%", x: 42, y: 14 },
+      knowledge: { left: "78%", top: "24%", x: 78, y: 24 },
+      risks: { left: "20%", top: "72%", x: 20, y: 72 },
+      candidates: { left: "54%", top: "80%", x: 54, y: 80 },
+      review: { left: "84%", top: "70%", x: 84, y: 70 },
+    };
+    const meshEdges = [
+      ["crm", "interactions"],
+      ["interactions", "knowledge"],
+      ["knowledge", "review"],
+      ["crm", "risks"],
+      ["risks", "candidates"],
+      ["candidates", "review"],
+      ["interactions", "risks"],
+      ["knowledge", "candidates"],
     ];
     const ledgerItems = buildMemoryLedgerItems(displayMemory, sources, account);
     const selectedLedger = ledgerItems.find((item) => item.id === selectedLedgerId) ?? ledgerItems[0];
     const trustedCount = ledgerItems.filter((item) => item.state === "fresh" || item.state === "approved").length;
     return (
-      <div className="grid min-h-[calc(100vh-128px)] grid-rows-[auto_auto_minmax(300px,1fr)] gap-3">
+      <div className="space-y-3">
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
           <section className="rounded-lg border border-black/10 bg-white p-3 shadow-sm">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
                 <Database size={18} className="text-emerald-600" />
-                <h2 className="text-lg font-semibold tracking-normal">Memory Graph</h2>
+                <h2 className="text-lg font-semibold tracking-normal">Neural Memory Mesh</h2>
               </div>
-              <p className="text-sm text-black/48">Profile, rules, episodes, and source memory connected to this account.</p>
+              <p className="text-sm text-black/48">Source memory, rules, risk episodes, and human decisions connected to this account.</p>
             </div>
 
             <div
-              className="relative mt-3 h-[360px] overflow-hidden rounded-lg border border-white/10 bg-[#101319] text-white"
+              className="relative mt-3 h-[390px] overflow-hidden rounded-lg border border-white/10 bg-[#101319] text-white"
               style={{
                 backgroundImage:
-                  "linear-gradient(rgba(255,255,255,0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.055) 1px, transparent 1px), radial-gradient(circle at 50% 42%, rgba(45,212,191,0.22), transparent 34%), radial-gradient(circle at 20% 20%, rgba(99,102,241,0.18), transparent 28%)",
+                  "linear-gradient(rgba(255,255,255,0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.055) 1px, transparent 1px), radial-gradient(circle at 52% 46%, rgba(45,212,191,0.2), transparent 34%), radial-gradient(circle at 22% 74%, rgba(99,102,241,0.18), transparent 30%)",
                 backgroundSize: "42px 42px, 42px 42px, 100% 100%, 100% 100%",
               }}
             >
-              <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-55" aria-hidden>
-                {sourceGraphNodes.map((node, index) => (
+              <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-70" aria-hidden viewBox="0 0 100 100" preserveAspectRatio="none">
+                {meshEdges.map(([from, to]) => (
                   <line
-                    key={node.id}
-                    x1="50%"
-                    y1="50%"
-                    x2={positions[index]?.left ?? "50%"}
-                    y2={positions[index]?.top ?? "50%"}
-                    stroke="rgba(125,211,252,0.55)"
-                    strokeWidth="2"
+                    key={`${from}-${to}`}
+                    x1={positions[from].x}
+                    y1={positions[from].y}
+                    x2={positions[to].x}
+                    y2={positions[to].y}
+                    stroke="rgba(125,211,252,0.42)"
+                    strokeWidth="0.45"
                   />
                 ))}
+                <line x1="15" y1="22" x2="84" y2="70" stroke="rgba(99,102,241,0.25)" strokeWidth="0.45" />
+                <line x1="78" y1="24" x2="20" y2="72" stroke="rgba(99,102,241,0.25)" strokeWidth="0.45" />
               </svg>
 
-              <div className="absolute left-1/2 top-1/2 w-[210px] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-cyan-200/20 bg-white/10 p-4 text-center shadow-[0_0_40px_rgba(45,212,191,0.2)] backdrop-blur">
-                <p className="text-xs font-semibold uppercase text-cyan-200">Account Memory</p>
+              <div className="absolute left-1/2 top-1/2 z-10 w-[214px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-cyan-200/25 bg-cyan-300/[0.10] p-4 text-center shadow-[0_0_56px_rgba(45,212,191,0.22)] backdrop-blur">
+                <p className="text-xs font-semibold uppercase text-cyan-200">Planner Core</p>
                 <h3 className="mt-2 text-lg font-semibold leading-6">{account.name}</h3>
-                <p className="mt-2 text-sm leading-5 text-white/58">{Object.values(sources).flat().length} source entries - {memoryQuality}% confidence</p>
+                <p className="mt-2 text-sm leading-5 text-white/58">
+                  {Object.values(sources).flat().length} sources - {memoryQuality}% trust - {trustedCount} trusted memories
+                </p>
               </div>
 
-              {sourceGraphNodes.map((node, index) => (
+              {memoryMeshNodes.map((node) => (
                 <div
                   key={node.id}
-                  className={`absolute w-[174px] -translate-x-1/2 -translate-y-1/2 rounded-lg border p-3 shadow-lg backdrop-blur ${
+                  className={`absolute z-10 w-[176px] -translate-x-1/2 -translate-y-1/2 rounded-xl border p-3 shadow-lg backdrop-blur transition hover:scale-[1.02] ${
                     node.tone === "profile"
                       ? "border-indigo-200/50 bg-indigo-50 text-indigo-900"
                       : node.tone === "rule"
                         ? "border-emerald-200/60 bg-emerald-50 text-emerald-900"
                         : node.tone === "episodic"
                           ? "border-amber-200/70 bg-amber-50 text-amber-900"
-                          : "border-cyan-200/60 bg-cyan-50 text-cyan-900"
+                          : node.tone === "review"
+                            ? "border-violet-200/70 bg-violet-50 text-violet-900"
+                            : "border-cyan-200/60 bg-cyan-50 text-cyan-900"
                   }`}
-                  style={{ left: positions[index]?.left, top: positions[index]?.top }}
+                  style={{ left: positions[node.id].left, top: positions[node.id].top }}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs font-semibold uppercase">{node.label}</p>
                     <span className="text-xs font-semibold">{node.count}</span>
                   </div>
                   <p className="mt-2 text-sm font-semibold leading-5">{node.detail}</p>
+                  <p className="mt-1 text-xs opacity-60">
+                    {node.count ? "connected to planner" : "waiting for source data"}
+                  </p>
                 </div>
               ))}
+
+              <div className="absolute bottom-3 left-3 right-3 z-10 grid gap-2 md:grid-cols-3">
+                {[
+                  ["Planner use", "Edges show which memory layers can influence the selected recommendation."],
+                  ["Trust rule", "Rules and human-reviewed items get stronger influence than fresh raw notes."],
+                  ["Gap signal", "Empty nodes show what the account still needs before confidence rises."],
+                ].map(([label, detail]) => (
+                  <div key={label} className="rounded-lg border border-white/10 bg-white/[0.07] p-3 backdrop-blur">
+                    <p className="text-xs font-semibold uppercase text-white/42">{label}</p>
+                    <p className="mt-1 text-xs leading-5 text-white/66">{detail}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
 
@@ -1974,13 +2853,13 @@ export function FlowDashboard() {
           </section>
         </div>
 
-        <div className="grid min-h-0 gap-3 xl:grid-cols-[0.9fr_1.1fr]">
-          <section className="flex min-h-0 flex-col rounded-lg border border-black/10 bg-white p-3 shadow-sm">
+        <div className="grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
+          <section className="rounded-lg border border-black/10 bg-white p-3 shadow-sm">
             <div className="flex items-center gap-2">
               <Database size={18} className="text-emerald-600" />
               <h2 className="text-lg font-semibold tracking-normal">Memory Cards</h2>
             </div>
-            <div className="mt-3 grid min-h-0 flex-1 content-start gap-2 overflow-y-auto pr-1">
+            <div className="mt-3 grid max-h-[420px] content-start gap-2 overflow-y-auto pr-1">
               {displayMemory.map((item) => (
                 <article key={item.id} className="rounded-md bg-[#f7f6f3] p-3">
                   <div className="flex items-center justify-between gap-2">
@@ -1995,12 +2874,12 @@ export function FlowDashboard() {
             </div>
           </section>
 
-          <section className="flex min-h-0 flex-col rounded-lg border border-black/10 bg-white p-3 shadow-sm">
+          <section className="rounded-lg border border-black/10 bg-white p-3 shadow-sm">
             <div className="flex items-center gap-2">
               <BadgeCheck size={18} className="text-amber-600" />
               <h2 className="text-lg font-semibold tracking-normal">Evidence For Selected Action</h2>
             </div>
-            <div className="mt-3 grid min-h-0 flex-1 content-start gap-2 overflow-y-auto pr-1">
+            <div className="mt-3 grid max-h-[420px] content-start gap-2 overflow-y-auto pr-1">
               {(activeSelected?.evidence.length ? activeSelected.evidence : []).map((item) => (
                 <article key={`${item.source_id}-${item.snippet}`} className="rounded-md border border-black/10 bg-[#fbfaf8] p-3">
                   <p className="text-sm font-semibold">{item.source_title}</p>
@@ -2150,6 +3029,9 @@ export function FlowDashboard() {
     if (activeView === "accounts") return accountCards();
     if (activeView === "today") return todayView();
     if (activeView === "dashboard") return dashboardView();
+    if (activeView === "outcomes") return outcomesView();
+    if (activeView === "escalations") return escalationsView();
+    if (activeView === "blueprints") return blueprintStudioView();
     if (activeView === "crm") return sourcePage("crm");
     if (activeView === "interactions") return sourcePage("interactions");
     if (activeView === "knowledge") return sourcePage("knowledge");
@@ -2207,14 +3089,26 @@ export function FlowDashboard() {
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-indigo-700">
-                  {activeView === "today" ? "All accounts" : account.segment}
+                  {activeView === "today" || activeView === "outcomes" || activeView === "escalations" || activeView === "blueprints"
+                    ? "Platform intelligence"
+                    : account.segment}
                 </p>
                 <h1 className="mt-0.5 text-2xl font-semibold tracking-normal text-black md:text-3xl">
-                  {activeView === "today" ? "Flow360 Daily Command Brief" : account.name}
+                  {activeView === "today"
+                    ? "Flow360 Daily Command Brief"
+                    : activeView === "outcomes" || activeView === "escalations" || activeView === "blueprints"
+                      ? viewLabels[activeView]
+                      : account.name}
                 </h1>
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-black/58">
                   {activeView === "today"
                     ? "A ranked morning briefing that tells the team which client needs attention, what changed, what is missing, and where to click next."
+                    : activeView === "outcomes"
+                      ? "Business outcome scorecards generated from each account's memory, source coverage, recommendations, and review state."
+                      : activeView === "escalations"
+                        ? "A generated owner, deadline, channel, and evidence view for every account that needs escalation."
+                        : activeView === "blueprints"
+                          ? "Reusable domain configuration showing how Flow360 adapts beyond one hardcoded use case."
                     : account.description}
                 </p>
               </div>
@@ -2260,9 +3154,7 @@ export function FlowDashboard() {
             </div>
           </div>
 
-          <div className={activeView === "memory" ? "" : "min-h-[calc(100vh-92px)]"}>
-            <div className={`min-w-0 p-3 ${activeView === "memory" ? "pb-6" : "pb-20"}`}>{activeContent()}</div>
-          </div>
+          <div className={`min-w-0 p-3 ${activeView === "memory" ? "pb-6" : "pb-20"}`}>{activeContent()}</div>
         </main>
       </div>
       {guidePanel()}
